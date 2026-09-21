@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import type { Player, Team, Match, Callup, TrainingSession, PlayerReport } from '../types/models';
 import { supabaseService } from '../services/supabaseService';
+import scrapedMatchesData from '../data/scraped_matches.json';
+import scrapedPlayersData from '../data/scraped_players.json';
+import scrapedTeamsData from '../data/scraped_teams.json';
 
 // Mocks locales precargados basados en el seed SQL
 const INITIAL_TEAMS: Team[] = [
@@ -241,10 +244,100 @@ const INITIAL_REPORTS: PlayerReport[] = [
   }
 ];
 
+const PARSED_SCRAPED_TEAMS: Team[] = (scrapedTeamsData as any[]).map((t) => ({
+  id: t.id || `team_${t.ffcv_cod}`,
+  name: t.name,
+  club: t.club || t.name,
+  crest_url: t.crest_url,
+  field_name: t.field_name,
+  city: t.city || 'Castelló',
+  province: t.province || 'Castelló',
+  address: t.address
+}));
+
+const ALL_INITIAL_TEAMS: Team[] = [
+  ...PARSED_SCRAPED_TEAMS,
+  ...INITIAL_TEAMS.filter(it => !PARSED_SCRAPED_TEAMS.some(st => st.name === it.name))
+];
+
+const PARSED_SCRAPED_PLAYERS: Player[] = (scrapedPlayersData as any[]).map((p) => {
+  const parts = (p.full_name || '').split(',');
+  const lastName = parts[0] ? parts[0].trim() : '';
+  const firstName = parts[1] ? parts[1].trim() : (p.full_name || '');
+  return {
+    id: p.id || `player_${p.ffcv_player_id}`,
+    first_name: firstName,
+    last_name: lastName,
+    full_name: p.full_name,
+    team_id: p.team_id,
+    team: {
+      id: p.team_id,
+      name: p.team,
+      club: p.team,
+      city: 'Castelló'
+    },
+    jersey_number: p.dorsal || undefined,
+    age: p.age,
+    photo_url: p.photo_url,
+    infantil_year: p.infantil_year || 'Desconocido',
+    history: p.history || [],
+    sports_data: p.sports_data || {},
+    status: 'Candidato',
+    source: 'ffcv_scraping',
+    source_player_id: String(p.ffcv_player_id || ''),
+    source_url: p.source_url,
+    scraped_at: p.scraped_at
+  };
+});
+
+const ALL_INITIAL_PLAYERS: Player[] = [
+  ...PARSED_SCRAPED_PLAYERS,
+  ...INITIAL_PLAYERS.filter(ip => !PARSED_SCRAPED_PLAYERS.some(sp => sp.full_name === ip.full_name))
+];
+
+const PARSED_SCRAPED_MATCHES: Match[] = (scrapedMatchesData as any[]).map((m) => ({
+  id: m.id,
+  home_team_id: m.home_team_id,
+  home_team_name: m.home_team_name || m.home_team,
+  home_crest: m.home_crest,
+  home_position: m.home_position,
+  home_points: m.home_points,
+  away_team_id: m.away_team_id,
+  away_team_name: m.away_team_name || m.away_team,
+  away_crest: m.away_crest,
+  away_position: m.away_position,
+  away_points: m.away_points,
+  competition_name: m.competition_name || m.competition,
+  group_name: m.group_name || m.group,
+  matchday: m.matchday,
+  match_date: m.match_date ? `${m.match_date}T${m.time || '09:00:00'}Z` : new Date().toISOString(),
+  time: m.time,
+  field_name: m.field_name,
+  field_code: m.field_code,
+  address: m.address,
+  city: m.city,
+  province: m.province,
+  postal_code: m.postal_code,
+  surface: m.surface,
+  latitude: m.latitude,
+  longitude: m.longitude,
+  status: (m.status as any) || 'Programado',
+  home_score: m.home_score,
+  away_score: m.away_score,
+  referees: m.referees || [],
+  codacta: m.codacta,
+  source: 'ffcv_scraping'
+}));
+
+const ALL_INITIAL_MATCHES: Match[] = [
+  ...PARSED_SCRAPED_MATCHES,
+  ...INITIAL_MATCHES
+];
+
 export function useAppStore() {
-  const [players, setPlayers] = useState<Player[]>(INITIAL_PLAYERS);
-  const [teams, setTeams] = useState<Team[]>(INITIAL_TEAMS);
-  const [matches] = useState<Match[]>(INITIAL_MATCHES);
+  const [players, setPlayers] = useState<Player[]>(ALL_INITIAL_PLAYERS);
+  const [teams, setTeams] = useState<Team[]>(ALL_INITIAL_TEAMS);
+  const [matches] = useState<Match[]>(ALL_INITIAL_MATCHES);
   const [callups, setCallups] = useState<Callup[]>(INITIAL_CALLUPS);
   const [trainings, setTrainings] = useState<TrainingSession[]>(INITIAL_TRAININGS);
   const [reports, setReports] = useState<PlayerReport[]>(INITIAL_REPORTS);
@@ -358,6 +451,7 @@ export function useAppStore() {
     callups,
     trainings,
     reports,
+    isSupabaseConnected,
     addPlayer,
     updatePlayer,
     createCallup,

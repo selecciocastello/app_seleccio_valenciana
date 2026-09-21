@@ -23,3 +23,96 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 102, 0, 0.8);
 }
+
+/* Match Card & Agenda Styles */
+.match-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #0b172a;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  padding: 16px 20px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.match-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(56, 189, 248, 0.4);
+  box-shadow: 0 12px 28px rgba(0, 37, 104, 0.35);
+  background: #0f2038;
+}
+
+.match-left {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.team-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 800;
+  color: #ffffff;
+  font-size: 0.92rem;
+  letter-spacing: -0.01em;
+}
+
+.team-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 2px;
+}
+
+.match-divider {
+  width: 1px;
+  height: 54px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 20px;
+  flex-shrink: 0;
+}
+
+.match-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.m-time {
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #38bdf8;
+  letter-spacing: -0.02em;
+}
+
+.m-btn.m-details {
+  background: rgba(56, 189, 248, 0.12);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  padding: 6px 14px;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.match-card:hover .m-btn.m-details {
+  background: #38bdf8;
+  color: #0b172a;
+}
+

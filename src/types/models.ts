@@ -80,6 +80,15 @@ export interface Season {
   is_current: boolean;
 }
 
+export type InfantilYear = 'Infantil 1er año' | 'Infantil 2º año' | 'Desconocido';
+
+export interface PlayerHistoryItem {
+  temporada: string;
+  escudo_url?: string | null;
+  equipo: string;
+  categoria: string;
+}
+
 export interface Player {
   id: string;
   first_name: string;
@@ -100,6 +109,11 @@ export interface Player {
   sports_data: SportsData;
   notes?: string;
   
+  // Categorización de edad infantil e historial
+  infantil_year?: InfantilYear;
+  age?: number;
+  history?: PlayerHistoryItem[];
+
   // Scraping metadata
   source: string;
   source_player_id?: string;
@@ -117,23 +131,40 @@ export type MatchStatus = 'Programado' | 'En Curso' | 'Finalizado' | 'Suspendido
 export interface Match {
   id: string;
   home_team_id: string;
+  home_team_name?: string;
   home_team?: Team;
+  home_crest?: string;
   away_team_id: string;
+  away_team_name?: string;
   away_team?: Team;
+  away_crest?: string;
   competition_id?: string;
+  competition_name?: string;
+  group_name?: string;
   category_id?: string;
+  matchday?: string;
   match_date: string;
+  time?: string;
+  home_position?: string;
+  home_points?: string | number;
+  away_position?: string;
+  away_points?: string | number;
   field_name?: string;
+  field_code?: string;
   address?: string;
   city?: string;
   province?: string;
+  postal_code?: string;
+  surface?: string;
   latitude?: number;
   longitude?: number;
   status: MatchStatus;
   home_score?: number;
   away_score?: number;
+  referees?: string[];
   source?: string;
   source_match_id?: string;
+  codacta?: string;
   created_at?: string;
   updated_at?: string;
 }

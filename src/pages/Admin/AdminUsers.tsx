@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Shield, UserCheck, Trash2, Power, X, Check, Search, Mail, User } from 'lucide-react';
+import { Plus, Shield, UserCheck, Trash2, Power, X, Check, Search } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { useAuth } from '../../contexts/AuthContext';

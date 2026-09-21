@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import clsx from 'clsx';
 import {
   ArrowLeft,
   ShieldAlert,
@@ -10,7 +11,8 @@ import {
   Edit,
   Database,
   MapPin,
-  CheckCircle2
+  CheckCircle2,
+  Award
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
@@ -31,6 +33,11 @@ export const PlayerDetail: React.FC = () => {
     showToast(`Estat actualitzat a: ${newStatus}`, 'success');
   };
 
+  const prevSeason = (player.history || []).find((h) => {
+    const t = (h.temporada || '').replace(/\s+/g, '');
+    return t.includes('2025-2026') || t.includes('25-26');
+  });
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Back Button */}
@@ -45,16 +52,41 @@ export const PlayerDetail: React.FC = () => {
       <Card className="p-6" gradient>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-5">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 border-2 border-emerald-400/40 flex items-center justify-center text-2xl font-black text-white shadow-xl">
-              {player.first_name[0]}
-              {player.last_name[0]}
-            </div>
+            {player.photo_url ? (
+              <img
+                src={player.photo_url}
+                alt={player.full_name}
+                className="w-20 h-20 rounded-2xl object-cover border-2 border-emerald-400/40 shadow-xl"
+              />
+            ) : (
+              <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 border-2 border-emerald-400/40 flex items-center justify-center text-2xl font-black text-white shadow-xl">
+                {player.first_name[0]}
+                {player.last_name[0]}
+              </div>
+            )}
             <div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2.5">
                 <h1 className="text-2xl font-black text-white uppercase">{player.full_name}</h1>
                 <Badge status={player.status} />
+                {player.infantil_year && (
+                  <span
+                    className={clsx(
+                      "px-3 py-0.5 rounded-full text-xs font-black uppercase tracking-wider border shadow-sm",
+                      player.infantil_year === 'Infantil 1er año' && "bg-sky-500/20 text-sky-300 border-sky-400/40",
+                      player.infantil_year === 'Infantil 2º año' && "bg-emerald-500/20 text-emerald-300 border-emerald-400/40",
+                      player.infantil_year === 'Desconocido' && "bg-slate-700/40 text-slate-300 border-slate-600"
+                    )}
+                  >
+                    {player.infantil_year}
+                  </span>
+                )}
+                {player.age && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/10 text-slate-200 border border-white/10">
+                    {player.age} anys
+                  </span>
+                )}
               </div>
-              <p className="text-sm font-semibold text-emerald-400 mt-0.5">
+              <p className="text-sm font-semibold text-emerald-400 mt-1">
                 {player.position} • {player.team?.name}
               </p>
               <div className="flex items-center gap-4 text-xs text-slate-300 mt-2">
@@ -168,22 +200,141 @@ export const PlayerDetail: React.FC = () => {
       )}
 
       {activeTab === 'historico' && (
-        <Card className="p-6 space-y-4">
-          <h3 className="text-base font-bold text-white">Històric de Convocatòries i Assistència</h3>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-4 bg-slate-950/60 border border-slate-800 rounded-xl">
-              <div>
-                <span className="text-xs font-bold text-emerald-400">15/10/2026 • Sub-16</span>
-                <h4 className="text-sm font-bold text-white">I Convocatòria Selecció Castelló</h4>
-                <p className="text-xs text-slate-400">Seleccionador: Vicent Ribes</p>
+        <div className="space-y-6">
+          {/* Card Historial FFCV Oficial */}
+          <Card className="p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-2.5">
+                <History className="w-5 h-5 text-emerald-400" />
+                <div>
+                  <h3 className="text-base font-bold text-white">Historial de Temporades (FFCV)</h3>
+                  <p className="text-xs text-slate-400">
+                    Trajectòria esportiva oficial extreta de la Federació de Futbol de la Comunitat Valenciana
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                <span className="text-xs font-bold text-emerald-300">Va Assistir</span>
+
+              {player.infantil_year && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-400">Classificació:</span>
+                  <span
+                    className={clsx(
+                      "px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border",
+                      player.infantil_year === 'Infantil 1er año' && "bg-sky-500/20 text-sky-300 border-sky-400/40",
+                      player.infantil_year === 'Infantil 2º año' && "bg-emerald-500/20 text-emerald-300 border-emerald-400/40",
+                      player.infantil_year === 'Desconocido' && "bg-slate-800 text-slate-300 border-slate-700"
+                    )}
+                  >
+                    {player.infantil_year}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Banner de explicación de año infantil */}
+            <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-xl flex items-start gap-3">
+              <Award className="w-5 h-5 text-sky-400 shrink-0 mt-0.5" />
+              <div className="text-xs space-y-1">
+                <p className="font-bold text-slate-200">
+                  Criteri d'Assignació d'Any Infantil:
+                </p>
+                <p className="text-slate-400">
+                  {prevSeason ? (
+                    <>
+                      A la temporada anterior (<strong className="text-white">2025-2026</strong>) va militar a <strong className="text-sky-300">{prevSeason.equipo}</strong> en la categoria <strong className="text-sky-300">{prevSeason.categoria}</strong>.{' '}
+                      {player.infantil_year === 'Infantil 1er año'
+                        ? 'En haver competit com a Aleví 2n any a la 25/26, li correspon la categoria d\'Infantil de 1er any per a la 26/27.'
+                        : (player.infantil_year === 'Infantil 2º año'
+                          ? 'En haver competit ja en categoria Infantil a la 25/26, li correspon la categoria d\'Infantil de 2n any per a la 26/27.'
+                          : 'Determinació basada en el registre federatiu.')}
+                    </>
+                  ) : (
+                    'No consta registre federatiu de la temporada 2025-2026 per a aquest jugador en el seu historial, per la qual cosa es classifica com a Desconegut.'
+                  )}
+                </p>
               </div>
             </div>
-          </div>
-        </Card>
+
+            {/* Tabla de Trayectoria */}
+            <div className="overflow-x-auto rounded-xl border border-slate-800">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-[#0b1c33] text-white font-black uppercase tracking-wider border-b border-slate-800">
+                    <th className="p-3.5">Temporada</th>
+                    <th className="p-3.5 text-center">Escut</th>
+                    <th className="p-3.5">Equip</th>
+                    <th className="p-3.5">Categoria</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-medium">
+                  {(!player.history || player.history.length === 0) ? (
+                    <tr>
+                      <td colSpan={4} className="p-6 text-center text-slate-500 font-bold">
+                        Sense historial de temporades registrat.
+                      </td>
+                    </tr>
+                  ) : (
+                    player.history.map((h, idx) => {
+                      const isTargetPrevSeason = (h.temporada || '').includes('2025-2026');
+                      return (
+                        <tr
+                          key={idx}
+                          className={clsx(
+                            "hover:bg-slate-900/60 transition-colors",
+                            isTargetPrevSeason && "bg-sky-950/20 font-bold"
+                          )}
+                        >
+                          <td className="p-3.5 text-white font-bold flex items-center gap-2">
+                            <span>{h.temporada}</span>
+                            {isTargetPrevSeason && (
+                              <span className="text-[10px] bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded-md border border-sky-500/30">
+                                Anterior (25/26)
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3.5 text-center">
+                            {h.escudo_url ? (
+                              <img
+                                src={h.escudo_url}
+                                alt={h.equipo}
+                                className="w-7 h-7 mx-auto object-contain"
+                                onError={(e) => {
+                                  (e.target as HTMLElement).style.display = 'none';
+                                }}
+                              />
+                            ) : (
+                              <span className="text-slate-600">—</span>
+                            )}
+                          </td>
+                          <td className="p-3.5 text-slate-200 font-semibold">{h.equipo}</td>
+                          <td className="p-3.5 text-slate-300">{h.categoria}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          {/* Històric de Convocatòries i Assistència */}
+          <Card className="p-6 space-y-4">
+            <h3 className="text-base font-bold text-white">Històric de Convocatòries i Assistència</h3>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-4 bg-slate-950/60 border border-slate-800 rounded-xl">
+                <div>
+                  <span className="text-xs font-bold text-emerald-400">15/10/2026 • Sub-16</span>
+                  <h4 className="text-sm font-bold text-white">I Convocatòria Selecció Castelló</h4>
+                  <p className="text-xs text-slate-400">Seleccionador: Vicent Ribes</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  <span className="text-xs font-bold text-emerald-300">Va Assistir</span>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
       )}
     </div>
   );

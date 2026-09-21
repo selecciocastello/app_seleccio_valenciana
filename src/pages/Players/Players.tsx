@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Search, Plus, Database } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import clsx from 'clsx';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
@@ -18,6 +19,7 @@ export const Players: React.FC = () => {
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedTeam, setSelectedTeam] = useState<string>('all');
   const [selectedPosition, setSelectedPosition] = useState<string>('all');
+  const [selectedInfantilYear, setSelectedInfantilYear] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Form State para añadir jugador
@@ -36,8 +38,9 @@ export const Players: React.FC = () => {
     const matchesStatus = selectedStatus === 'all' || p.status === selectedStatus;
     const matchesTeam = selectedTeam === 'all' || p.team_id === selectedTeam;
     const matchesPosition = selectedPosition === 'all' || p.position === selectedPosition;
+    const matchesInfantilYear = selectedInfantilYear === 'all' || p.infantil_year === selectedInfantilYear;
 
-    return matchesSearch && matchesStatus && matchesTeam && matchesPosition;
+    return matchesSearch && matchesStatus && matchesTeam && matchesPosition && matchesInfantilYear;
   });
 
   const handleCreatePlayer = (e: React.FormEvent) => {
@@ -84,7 +87,7 @@ export const Players: React.FC = () => {
 
       {/* Buscador y Filtros */}
       <Card className="p-4 bg-white space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
           {/* Buscador */}
           <div className="relative md:col-span-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -96,6 +99,18 @@ export const Players: React.FC = () => {
               className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-10 pr-4 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#002568]"
             />
           </div>
+
+          {/* Filtro Año Infantil */}
+          <select
+            value={selectedInfantilYear}
+            onChange={(e) => setSelectedInfantilYear(e.target.value)}
+            className="bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#002568]"
+          >
+            <option value="all">Tots els Anys (Infantil)</option>
+            <option value="Infantil 1er año">Infantil 1er any</option>
+            <option value="Infantil 2º año">Infantil 2n any</option>
+            <option value="Desconocido">Desconegut</option>
+          </select>
 
           {/* Filtro Estado */}
           <select
@@ -151,9 +166,10 @@ export const Players: React.FC = () => {
             <thead>
               <tr className="border-b border-slate-200 bg-[#061338] text-white font-black uppercase tracking-wider">
                 <th className="p-4">Jugador</th>
+                <th className="p-4">Any Infantil</th>
                 <th className="p-4">Posició</th>
                 <th className="p-4">Equip</th>
-                <th className="p-4">Edat / Naixement</th>
+                <th className="p-4">Edat</th>
                 <th className="p-4">Estat</th>
                 <th className="p-4">Font Dades</th>
                 <th className="p-4 text-right">Acció</th>
@@ -162,7 +178,7 @@ export const Players: React.FC = () => {
             <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
               {filteredPlayers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-500 font-bold">
+                  <td colSpan={8} className="p-8 text-center text-slate-500 font-bold">
                     No s'han trobat jugadors amb els filtres seleccionats.
                   </td>
                 </tr>
@@ -170,25 +186,50 @@ export const Players: React.FC = () => {
                 filteredPlayers.map((player) => (
                   <tr key={player.id} className="hover:bg-slate-50 transition-colors">
                     <td className="p-4 font-black text-slate-900 flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-[#002568] text-white flex items-center justify-center font-black text-xs uppercase shadow-sm">
-                        {player.first_name[0]}
-                        {player.last_name[0]}
-                      </div>
+                      {player.photo_url ? (
+                        <img
+                          src={player.photo_url}
+                          alt={player.full_name}
+                          className="w-10 h-10 rounded-full object-cover border border-slate-200 shadow-sm"
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-[#002568] text-white flex items-center justify-center font-black text-xs uppercase shadow-sm">
+                          {player.first_name[0]}
+                          {player.last_name[0]}
+                        </div>
+                      )}
                       <div>
                         <span className="text-sm font-black text-[#061338] uppercase">{player.full_name}</span>
                         <p className="text-[11px] text-slate-500 font-semibold">Dorsal #{player.jersey_number || '-'}</p>
                       </div>
                     </td>
+                    <td className="p-4">
+                      <span
+                        className={clsx(
+                          "px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider inline-flex items-center gap-1 border",
+                          player.infantil_year === 'Infantil 1er año' && "bg-sky-50 text-sky-700 border-sky-300",
+                          player.infantil_year === 'Infantil 2º año' && "bg-emerald-50 text-emerald-700 border-emerald-300",
+                          (!player.infantil_year || player.infantil_year === 'Desconocido') && "bg-slate-100 text-slate-600 border-slate-200"
+                        )}
+                      >
+                        {player.infantil_year || 'Desconegut'}
+                      </span>
+                    </td>
                     <td className="p-4 font-bold text-slate-700">{player.position}</td>
                     <td className="p-4 font-bold text-slate-800">{player.team?.name}</td>
-                    <td className="p-4 font-semibold text-slate-600">{player.birth_date || '15 anys (2010)'}</td>
+                    <td className="p-4 font-semibold text-slate-600">
+                      {player.age ? `${player.age} anys` : (player.birth_date || 'Infantil')}
+                    </td>
                     <td className="p-4">
                       <Badge status={player.status} />
                     </td>
                     <td className="p-4">
                       <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200">
                         <Database className="w-3 h-3 text-[#002568]" />
-                        {player.source === 'source_a_scraping' ? 'Scraping FFCV' : 'Manual'}
+                        {player.source === 'source_a_scraping' || player.source === 'ffcv_scraping' ? 'Scraping FFCV' : 'Manual'}
                       </span>
                     </td>
                     <td className="p-4 text-right">

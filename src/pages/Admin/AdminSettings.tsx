@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, Save, ShieldAlert, CheckCircle2, Sliders, Layers } from 'lucide-react';
+import { Settings, Save, ShieldAlert, Sliders, Layers } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';

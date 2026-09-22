@@ -299,7 +299,10 @@ ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 -- Administradores: Acceso Total
 -- Usuarios autenticados: Lectura general y edición permitida para seleccionadores en sus entidades
 
+DROP POLICY IF EXISTS "Public profiles read" ON public.profiles;
 CREATE POLICY "Public profiles read" ON public.profiles FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Admins full access profiles" ON public.profiles;
 CREATE POLICY "Admins full access profiles" ON public.profiles FOR ALL USING (
   EXISTS (
     SELECT 1 FROM public.profiles p
@@ -308,23 +311,45 @@ CREATE POLICY "Admins full access profiles" ON public.profiles FOR ALL USING (
   )
 );
 
+DROP POLICY IF EXISTS "Authenticated read players" ON public.players;
 CREATE POLICY "Authenticated read players" ON public.players FOR SELECT USING (auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Authenticated update players" ON public.players;
 CREATE POLICY "Authenticated update players" ON public.players FOR ALL USING (auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "Authenticated read callups" ON public.callups;
 CREATE POLICY "Authenticated read callups" ON public.callups FOR SELECT USING (auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Authenticated write callups" ON public.callups;
 CREATE POLICY "Authenticated write callups" ON public.callups FOR ALL USING (auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "Authenticated read matches" ON public.matches;
 CREATE POLICY "Authenticated read matches" ON public.matches FOR SELECT USING (auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Authenticated write matches" ON public.matches;
 CREATE POLICY "Authenticated write matches" ON public.matches FOR ALL USING (auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "Authenticated read teams" ON public.teams;
 CREATE POLICY "Authenticated read teams" ON public.teams FOR SELECT USING (auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Authenticated write teams" ON public.teams;
 CREATE POLICY "Authenticated write teams" ON public.teams FOR ALL USING (auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "Authenticated read training" ON public.training_sessions;
 CREATE POLICY "Authenticated read training" ON public.training_sessions FOR SELECT USING (auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Authenticated write training" ON public.training_sessions;
 CREATE POLICY "Authenticated write training" ON public.training_sessions FOR ALL USING (auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "Authenticated read reports" ON public.player_reports;
 CREATE POLICY "Authenticated read reports" ON public.player_reports FOR SELECT USING (auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Authenticated write reports" ON public.player_reports;
 CREATE POLICY "Authenticated write reports" ON public.player_reports FOR ALL USING (auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "Admins full scraping" ON public.scraping_jobs;
 CREATE POLICY "Admins full scraping" ON public.scraping_jobs FOR ALL USING (auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Admins full logs" ON public.audit_logs;
 CREATE POLICY "Admins full logs" ON public.audit_logs FOR ALL USING (auth.role() = 'authenticated');
+

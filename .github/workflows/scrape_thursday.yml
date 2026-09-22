@@ -1,0 +1,46 @@
+name: Scraping Semanal FFCV (Jueves)
+
+on:
+  schedule:
+    # Se ejecuta todos los jueves a las 05:00 UTC (07:00 hora peninsular española)
+    - cron: '0 5 * * 4'
+  workflow_dispatch: # Permite ejecutarlo manualmente desde GitHub con un clic
+
+jobs:
+  scrape-and-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: 📥 Clonar repositorio
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Configurar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: 📦 Instalar dependencias del proyecto
+        run: npm ci || npm install
+
+      - name: 🌐 Instalar navegador Chromium para Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: ⚽ Ejecutar Scraping FFCV (Partidos, Campos y Jugadores)
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/scrape_ffcv_infantil.cjs
+
+      - name: 💾 Guardar datos JSON en el repositorio (Commit & Push)
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/data/*.json scripts/fields_cache.json || true
+          if git diff --staged --quiet; then
+            echo "No hay cambios nuevos en los datos locales."
+          else
+            git commit -m "chore(data): actualización automática de partidos y jugadores [skip ci]"
+            git push
+          fi

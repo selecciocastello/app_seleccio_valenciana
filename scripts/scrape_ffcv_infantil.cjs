@@ -162,6 +162,11 @@ function loadEnv() {
   return env;
 }
 
+// Polyfill de WebSocket para Node < 22 en @supabase/supabase-js
+if (!globalThis.WebSocket) {
+  globalThis.WebSocket = class DummyWebSocket {};
+}
+
 // Intentar guardar en Supabase si está disponible
 async function trySaveToSupabase(matches, teams, players) {
   const env = loadEnv();
@@ -188,12 +193,43 @@ async function trySaveToSupabase(matches, teams, players) {
         city: t.city,
         province: t.province || 'Castelló',
         address: t.address,
-        latitude: t.latitude,
-        longitude: t.longitude
+        latitude: t.latitude ? parseFloat(t.latitude) : null,
+        longitude: t.longitude ? parseFloat(t.longitude) : null
       }));
       const { error: tErr } = await supabase.from('teams').upsert(dbTeams, { onConflict: 'name' });
       if (tErr) console.warn('   ⚠️ Error sincronizando equipos en Supabase:', tErr.message);
       else console.log(`   ✅ ${teams.length} equipos sincronizados en Supabase.`);
+    }
+
+    // Upsert Matches
+    if (matches && matches.length > 0) {
+      const dbMatches = matches.map(m => ({
+        match_date: m.match_date ? new Date(m.match_date).toISOString() : new Date().toISOString(),
+        field_name: m.field_name || null,
+        address: m.address || null,
+        city: m.city || null,
+        province: m.province || 'Castelló',
+        latitude: m.latitude ? parseFloat(m.latitude) : null,
+        longitude: m.longitude ? parseFloat(m.longitude) : null,
+        status: m.status || 'Programado',
+        home_score: m.home_score != null ? m.home_score : null,
+        away_score: m.away_score != null ? m.away_score : null,
+        source: 'ffcv_scraping',
+        source_match_id: String(m.codacta || m.id || ''),
+        codacta: m.codacta ? String(m.codacta) : null,
+        matchday: m.matchday || null,
+        match_time: m.time || null,
+        home_team_name: m.home_team_name || 'Local',
+        home_crest: m.home_crest || null,
+        away_team_name: m.away_team_name || 'Visitante',
+        away_crest: m.away_crest || null,
+        competition_name: m.competition_name || null,
+        group_name: m.group_name || null,
+        referees: m.referees || []
+      }));
+      const { error: mErr } = await supabase.from('matches').upsert(dbMatches, { onConflict: 'source,source_match_id' });
+      if (mErr) console.warn('   ⚠️ Error sincronizando partidos en Supabase:', mErr.message);
+      else console.log(`   ✅ ${matches.length} partidos sincronizados en Supabase.`);
     }
 
     // Upsert Players
@@ -214,6 +250,9 @@ async function trySaveToSupabase(matches, teams, players) {
           source: 'ffcv_scraping',
           source_player_id: String(p.ffcv_player_id || ''),
           source_url: p.source_url,
+          infantil_year: p.infantil_year || 'Desconocido',
+          age: p.age ? parseInt(p.age, 10) : null,
+          history: p.history || [],
           scraped_at: new Date().toISOString()
         };
       });

@@ -36,7 +36,16 @@ try {
 
 // Configuración de competiciones solicitadas
 const TARGET_TEMPORADA = '22'; // 2026-2027
+const CASTELLON_AUTONOMICA_CODES = ['17274', '17230', '17781', '18000']; // Villarreal 'A', Castellón 'A', Primer Toque 'A', Roda 'A'
+
 const TARGET_COMPETITIONS = [
+  {
+    id: '905431905',
+    name: 'Lliga Autonòmica Infantil',
+    groups: [
+      { id: '905431906', name: 'Grup - Únic' }
+    ]
+  },
   {
     id: '905431907',
     name: 'Lliga Preferent Infantil',
@@ -181,64 +190,88 @@ async function trySaveToSupabase(matches, teams, players) {
     const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
     console.log('\n📡 Sincronizando con Supabase...');
 
-    // Upsert Teams
+    // 1. Upsert Teams (Deduplicados por nombre)
     if (teams && teams.length > 0) {
-      const dbTeams = teams.map(t => ({
-        name: t.name,
-        club: t.club || t.name,
-        crest_url: t.crest_url,
-        field_name: t.field_name,
-        city: t.city,
-        province: t.province || 'Castelló',
-        address: t.address,
-        latitude: t.latitude ? parseFloat(t.latitude) : null,
-        longitude: t.longitude ? parseFloat(t.longitude) : null
-      }));
-      const { error: tErr } = await supabase.from('teams').upsert(dbTeams, { onConflict: 'name' });
-      if (tErr) console.warn('   ⚠️ Error sincronizando equipos en Supabase:', tErr.message);
-      else console.log(`   ✅ ${teams.length} equipos sincronizados en Supabase.`);
+      const teamsMap = new Map();
+      for (const t of teams) {
+        if (!t.name || !t.name.trim()) continue;
+        const key = t.name.trim().toLowerCase();
+        if (!teamsMap.has(key)) {
+          teamsMap.set(key, {
+            name: t.name.trim(),
+            club: t.club || t.name.trim(),
+            crest_url: t.crest_url || null,
+            field_name: t.field_name || null,
+            city: t.city && t.city !== '0' ? t.city : 'Castelló',
+            province: t.province && t.province !== 'Otra' ? t.province : 'Castelló',
+            address: t.address || null,
+            latitude: t.latitude ? parseFloat(t.latitude) : null,
+            longitude: t.longitude ? parseFloat(t.longitude) : null
+          });
+        }
+      }
+      const dbTeams = Array.from(teamsMap.values());
+      const chunkSize = 100;
+      let tSuccess = 0;
+      for (let i = 0; i < dbTeams.length; i += chunkSize) {
+        const chunk = dbTeams.slice(i, i + chunkSize);
+        const { error: tErr } = await supabase.from('teams').upsert(chunk, { onConflict: 'name' });
+        if (tErr) console.warn(`   ⚠️ Error sincronizando lote de equipos (${i}-${i + chunk.length}):`, tErr.message);
+        else tSuccess += chunk.length;
+      }
+      console.log(`   ✅ ${tSuccess}/${dbTeams.length} equipos sincronizados en Supabase.`);
     }
 
-    // Upsert Matches
+    // 2. Upsert Matches (Deduplicados por source_match_id)
     if (matches && matches.length > 0) {
-      const dbMatches = matches.map(m => ({
-        match_date: m.match_date ? new Date(m.match_date).toISOString() : new Date().toISOString(),
-        field_name: m.field_name || null,
-        address: m.address || null,
-        city: m.city || null,
-        province: m.province || 'Castelló',
-        latitude: m.latitude ? parseFloat(m.latitude) : null,
-        longitude: m.longitude ? parseFloat(m.longitude) : null,
-        status: m.status || 'Programado',
-        home_score: m.home_score != null ? m.home_score : null,
-        away_score: m.away_score != null ? m.away_score : null,
-        source: 'ffcv_scraping',
-        source_match_id: String(m.codacta || m.id || ''),
-        codacta: m.codacta ? String(m.codacta) : null,
-        matchday: m.matchday || null,
-        match_time: m.time || null,
-        home_team_name: m.home_team_name || 'Local',
-        home_crest: m.home_crest || null,
-        away_team_name: m.away_team_name || 'Visitante',
-        away_crest: m.away_crest || null,
-        competition_name: m.competition_name || null,
-        group_name: m.group_name || null,
-        referees: m.referees || []
-      }));
-      const { error: mErr } = await supabase.from('matches').upsert(dbMatches, { onConflict: 'source,source_match_id' });
-      if (mErr) console.warn('   ⚠️ Error sincronizando partidos en Supabase:', mErr.message);
-      else console.log(`   ✅ ${matches.length} partidos sincronizados en Supabase.`);
+      const matchesMap = new Map();
+      for (const m of matches) {
+        const homeName = m.home_team_name || m.home_team || 'Local';
+        const awayName = m.away_team_name || m.away_team || 'Visitante';
+        const matchDate = m.match_date ? new Date(m.match_date).toISOString() : new Date().toISOString();
+        const sourceMatchId = String(m.codacta || m.id || `${homeName}-${awayName}-${m.matchday || ''}-${m.match_date || ''}`);
+
+        if (!sourceMatchId) continue;
+
+        matchesMap.set(sourceMatchId, {
+          match_date: matchDate,
+          field_name: m.field_name || null,
+          address: m.address || null,
+          city: m.city || null,
+          province: m.province || 'Castelló',
+          latitude: m.latitude ? parseFloat(m.latitude) : null,
+          longitude: m.longitude ? parseFloat(m.longitude) : null,
+          status: m.status || 'Programado',
+          home_score: m.home_score != null ? m.home_score : null,
+          away_score: m.away_score != null ? m.away_score : null,
+          source: 'ffcv_scraping',
+          source_match_id: sourceMatchId,
+          codacta: m.codacta ? String(m.codacta) : null,
+          matchday: m.matchday || null,
+          match_time: m.time || m.match_time || null,
+          home_team_name: homeName,
+          home_crest: m.home_crest || null,
+          away_team_name: awayName,
+          away_crest: m.away_crest || null,
+          competition_name: m.competition_name || m.competition || null,
+          group_name: m.group_name || m.group || null,
+          referees: m.referees || []
+        });
+      }
+      const dbMatches = Array.from(matchesMap.values());
+      const chunkSize = 100;
+      let mSuccess = 0;
+      for (let i = 0; i < dbMatches.length; i += chunkSize) {
+        const chunk = dbMatches.slice(i, i + chunkSize);
+        const { error: mErr } = await supabase.from('matches').upsert(chunk, { onConflict: 'source,source_match_id' });
+        if (mErr) console.warn(`   ⚠️ Error sincronizando lote de partidos (${i}-${i + chunk.length}):`, mErr.message);
+        else mSuccess += chunk.length;
+      }
+      console.log(`   ✅ ${mSuccess}/${dbMatches.length} partidos sincronizados en Supabase.`);
     }
 
-    // Upsert Players
+    // 3. Upsert Players (Deduplicados por source_player_id)
     if (players && players.length > 0) {
-      // Obtener mapeo de equipos para asignar team_id.
-      // IMPORTANTE: solo por nombre EXACTO del equipo (con la letra 'A'/'B'/'C').
-      // Mapear también por `club` es ambiguo cuando un mismo club tiene varios
-      // equipos (p.ej. 'Primer Toque C.F.' con equipos 'B' y 'C'): el último
-      // equipo procesado sobreescribía la entrada del club y todos los
-      // jugadores sin letra en su campo `team` acababan agrupados en ese único
-      // equipo, vaciando el resto.
       const { data: dbTeamsList } = await supabase.from('teams').select('id, name');
       const teamNameToId = new Map();
       if (dbTeamsList) {
@@ -247,35 +280,47 @@ async function trySaveToSupabase(matches, teams, players) {
         }
       }
 
-      const dbPlayers = players.map(p => {
+      const playersMap = new Map();
+      for (const p of players) {
+        const sourcePlayerId = String(p.ffcv_player_id || p.source_player_id || p.id || '');
+        if (!sourcePlayerId) continue;
+
         const names = (p.full_name || '').split(',');
         const lastName = names[0] ? names[0].trim() : '';
         const firstName = names[1] ? names[1].trim() : (p.full_name || '');
         const teamKey = (p.team || '').trim().toLowerCase();
         const teamId = teamNameToId.get(teamKey) || null;
 
-        return {
+        playersMap.set(sourcePlayerId, {
           first_name: firstName,
           last_name: lastName,
           position: p.position || 'Candidato',
           jersey_number: p.dorsal ? parseInt(p.dorsal, 10) : (p.jersey_number || null),
-          photo_url: p.photo_url,
+          photo_url: p.photo_url || null,
           team_id: teamId,
           city: p.city || 'Castelló',
+          province: p.province || 'Castelló',
           status: 'Candidato',
           sports_data: p.sports_data || {},
           source: 'ffcv_scraping',
-          source_player_id: String(p.ffcv_player_id || ''),
-          source_url: p.source_url,
+          source_player_id: sourcePlayerId,
+          source_url: p.source_url || null,
           infantil_year: p.infantil_year || 'Desconocido',
           age: p.age ? parseInt(p.age, 10) : null,
           history: p.history || [],
-          scraped_at: new Date().toISOString()
-        };
-      });
-      const { error: pErr } = await supabase.from('players').upsert(dbPlayers, { onConflict: 'source,source_player_id' });
-      if (pErr) console.warn('   ⚠️ Error sincronizando jugadores en Supabase:', pErr.message);
-      else console.log(`   ✅ ${players.length} jugadores sincronizados en Supabase.`);
+          scraped_at: p.scraped_at || new Date().toISOString()
+        });
+      }
+      const dbPlayers = Array.from(playersMap.values());
+      const chunkSize = 100;
+      let pSuccess = 0;
+      for (let i = 0; i < dbPlayers.length; i += chunkSize) {
+        const chunk = dbPlayers.slice(i, i + chunkSize);
+        const { error: pErr } = await supabase.from('players').upsert(chunk, { onConflict: 'source,source_player_id' });
+        if (pErr) console.warn(`   ⚠️ Error sincronizando lote de jugadores (${i}-${i + chunk.length}):`, pErr.message);
+        else pSuccess += chunk.length;
+      }
+      console.log(`   ✅ ${pSuccess}/${dbPlayers.length} jugadores sincronizados en Supabase.`);
     }
   } catch (err) {
     console.warn('   ⚠️ Error conectando con Supabase:', err.message);
@@ -530,9 +575,14 @@ function getChromiumLaunchOptions(headless) {
             }
           }, grp.id);
 
-          const equipos = Array.isArray(classifData?.clasificacion)
+          let equipos = Array.isArray(classifData?.clasificacion)
             ? classifData.clasificacion
             : (Array.isArray(classifData?.clasificaciones) ? classifData.clasificaciones : []);
+
+          if (comp.id === '905431905') {
+            equipos = equipos.filter(eq => CASTELLON_AUTONOMICA_CODES.includes(String(eq.codequipo)));
+          }
+
           console.log(`     ${equipos.length} equipos en el grupo.`);
 
           let teamCount = 0;

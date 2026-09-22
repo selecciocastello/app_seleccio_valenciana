@@ -82,26 +82,31 @@ async function main() {
 
   // 2.1 Sincronizar Equipos
   if (rawTeams.length > 0) {
-    const dbTeams = rawTeams.map(t => ({
-      name: t.name,
-      club: t.club || t.name,
-      crest_url: t.crest_url,
-      field_name: t.field_name,
-      city: t.city && t.city !== '0' ? t.city : 'Castelló',
-      province: t.province && t.province !== 'Otra' ? t.province : 'Castelló',
-      address: t.address,
-      latitude: t.latitude ? parseFloat(t.latitude) : null,
-      longitude: t.longitude ? parseFloat(t.longitude) : null
-    }));
+    const teamsMap = new Map();
+    for (const t of rawTeams) {
+      if (!t.name || !t.name.trim()) continue;
+      const key = t.name.trim().toLowerCase();
+      if (!teamsMap.has(key)) {
+        teamsMap.set(key, {
+          name: t.name.trim(),
+          club: t.club || t.name.trim(),
+          crest_url: t.crest_url || null,
+          field_name: t.field_name || null,
+          city: t.city && t.city !== '0' ? t.city : 'Castelló',
+          province: t.province && t.province !== 'Otra' ? t.province : 'Castelló',
+          address: t.address || null,
+          latitude: t.latitude ? parseFloat(t.latitude) : null,
+          longitude: t.longitude ? parseFloat(t.longitude) : null
+        });
+      }
+    }
 
+    const dbTeams = Array.from(teamsMap.values());
     const { error: tUpsertErr } = await supabase.from('teams').upsert(dbTeams, { onConflict: 'name' });
     if (tUpsertErr) console.warn('   ⚠️ Error sincronizando equipos:', tUpsertErr.message);
     else console.log(`   ✅ ${dbTeams.length} equipos reales sincronizados.`);
 
-    // Eliminar equipos "fantasma": filas que quedaron en Supabase de scrapeos anteriores
-    // (p.ej. equipos letra 'B'/'C' que la FFCV ya no reporta este curso) y que ya no
-    // aparecen en el scrapeo actual. Sin esta limpieza se acumulan equipos duplicados
-    // con 0 jugadores que confunden con los equipos reales de la misma denominación.
+    // Eliminar equipos "fantasma"
     const currentTeamNames = new Set(rawTeams.map(t => t.name.trim().toLowerCase()));
     const { data: existingTeams } = await supabase.from('teams').select('id, name');
     const staleTeamIds = (existingTeams || [])
@@ -109,8 +114,6 @@ async function main() {
       .map(t => t.id);
 
     if (staleTeamIds.length > 0) {
-      // team_id de players tiene ON DELETE SET NULL, así que es seguro borrar:
-      // los jugadores que apuntaban a estos equipos fantasma quedan sin equipo asignado.
       const { error: tDelStaleErr } = await supabase.from('teams').delete().in('id', staleTeamIds);
       if (tDelStaleErr) console.warn('   ⚠️ Error eliminando equipos obsoletos:', tDelStaleErr.message);
       else console.log(`   🧹 ${staleTeamIds.length} equipos obsoletos (fantasma) eliminados.`);
@@ -129,34 +132,38 @@ async function main() {
   // 2.2 Sincronizar Jugadores
   if (rawPlayers.length > 0) {
     console.log(`\n⏳ Procesando ${rawPlayers.length} jugadores reales...`);
-    const dbPlayers = rawPlayers.map(p => {
+    const playersMap = new Map();
+    for (const p of rawPlayers) {
+      const sourcePlayerId = String(p.ffcv_player_id || p.source_player_id || p.id || '');
+      if (!sourcePlayerId) continue;
+
       const names = (p.full_name || '').split(',');
       const lastName = names[0] ? names[0].trim() : '';
       const firstName = names[1] ? names[1].trim() : (p.full_name || '');
       const teamId = p.team ? teamNameToId.get(p.team.trim().toLowerCase()) : null;
 
-      return {
+      playersMap.set(sourcePlayerId, {
         first_name: firstName,
         last_name: lastName,
         position: p.position || 'Candidato',
-        jersey_number: p.dorsal ? parseInt(p.dorsal, 10) : null,
-        photo_url: p.photo_url,
+        jersey_number: p.dorsal ? parseInt(p.dorsal, 10) : (p.jersey_number || null),
+        photo_url: p.photo_url || null,
         team_id: teamId || null,
-        city: 'Castelló',
-        province: 'Castelló',
+        city: p.city || 'Castelló',
+        province: p.province || 'Castelló',
         status: 'Candidato',
         infantil_year: p.infantil_year || 'Desconocido',
         age: p.age ? parseInt(p.age, 10) : null,
         history: p.history || [],
         sports_data: p.sports_data || {},
         source: 'ffcv_scraping',
-        source_player_id: String(p.ffcv_player_id || ''),
-        source_url: p.source_url,
+        source_player_id: sourcePlayerId,
+        source_url: p.source_url || null,
         scraped_at: p.scraped_at || new Date().toISOString()
-      };
-    });
+      });
+    }
 
-    // Enviar en lotes de 100
+    const dbPlayers = Array.from(playersMap.values());
     const chunkSize = 100;
     for (let i = 0; i < dbPlayers.length; i += chunkSize) {
       const chunk = dbPlayers.slice(i, i + chunkSize);
@@ -170,32 +177,42 @@ async function main() {
   // 2.3 Sincronizar Partidos
   if (rawMatches.length > 0) {
     console.log(`\n⏳ Procesando ${rawMatches.length} partidos de la agenda...`);
-    const dbMatches = rawMatches.map(m => ({
-      match_date: m.match_date ? new Date(m.match_date).toISOString() : new Date().toISOString(),
-      field_name: m.field_name || null,
-      address: m.address || null,
-      city: m.city || null,
-      province: m.province || 'Castelló',
-      latitude: m.latitude ? parseFloat(m.latitude) : null,
-      longitude: m.longitude ? parseFloat(m.longitude) : null,
-      status: m.status || 'Programado',
-      home_score: m.home_score != null ? m.home_score : null,
-      away_score: m.away_score != null ? m.away_score : null,
-      source: 'ffcv_scraping',
-      source_match_id: String(m.codacta || m.id || ''),
-      codacta: m.codacta ? String(m.codacta) : null,
-      matchday: m.matchday || null,
-      match_time: m.time || null,
-      home_team_name: m.home_team_name || 'Local',
-      home_crest: m.home_crest || null,
-      away_team_name: m.away_team_name || 'Visitante',
-      away_crest: m.away_crest || null,
-      competition_name: m.competition_name || null,
-      group_name: m.group_name || null,
-      referees: m.referees || []
-    }));
+    const matchesMap = new Map();
+    for (const m of rawMatches) {
+      const homeName = m.home_team_name || m.home_team || 'Local';
+      const awayName = m.away_team_name || m.away_team || 'Visitante';
+      const matchDate = m.match_date ? new Date(m.match_date).toISOString() : new Date().toISOString();
+      const sourceMatchId = String(m.codacta || m.id || `${homeName}-${awayName}-${m.matchday || ''}-${m.match_date || ''}`);
 
-    // Enviar en lotes de 100
+      if (!sourceMatchId) continue;
+
+      matchesMap.set(sourceMatchId, {
+        match_date: matchDate,
+        field_name: m.field_name || null,
+        address: m.address || null,
+        city: m.city || null,
+        province: m.province || 'Castelló',
+        latitude: m.latitude ? parseFloat(m.latitude) : null,
+        longitude: m.longitude ? parseFloat(m.longitude) : null,
+        status: m.status || 'Programado',
+        home_score: m.home_score != null ? m.home_score : null,
+        away_score: m.away_score != null ? m.away_score : null,
+        source: 'ffcv_scraping',
+        source_match_id: sourceMatchId,
+        codacta: m.codacta ? String(m.codacta) : null,
+        matchday: m.matchday || null,
+        match_time: m.time || m.match_time || null,
+        home_team_name: homeName,
+        home_crest: m.home_crest || null,
+        away_team_name: awayName,
+        away_crest: m.away_crest || null,
+        competition_name: m.competition_name || m.competition || null,
+        group_name: m.group_name || m.group || null,
+        referees: m.referees || []
+      });
+    }
+
+    const dbMatches = Array.from(matchesMap.values());
     const chunkSize = 100;
     for (let i = 0; i < dbMatches.length; i += chunkSize) {
       const chunk = dbMatches.slice(i, i + chunkSize);

@@ -6,6 +6,10 @@ on:
     - cron: '0 5 * * 4'
   workflow_dispatch: # Permite ejecutarlo manualmente desde GitHub con un clic
 
+# Permisos para que github-actions[bot] pueda hacer commit y push de los datos
+permissions:
+  contents: write
+
 jobs:
   scrape-and-sync:
     runs-on: ubuntu-latest
@@ -14,6 +18,8 @@ jobs:
     steps:
       - name: 📥 Clonar repositorio
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: ⚙️ Configurar Node.js 22
         uses: actions/setup-node@v4
@@ -42,5 +48,5 @@ jobs:
             echo "No hay cambios nuevos en los datos locales."
           else
             git commit -m "chore(data): actualización automática de partidos y jugadores [skip ci]"
-            git push
+            git push origin HEAD:${{ github.ref_name }}
           fi

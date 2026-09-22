@@ -3,8 +3,10 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
+  Shield,
   ShieldAlert,
   Calendar,
+  CalendarCheck,
   MapPin,
   Dumbbell,
   FileSpreadsheet,
@@ -24,14 +26,15 @@ export const Sidebar: React.FC = () => {
 
   const navItems = [
     { to: '/dashboard', label: t.dashboard, icon: LayoutDashboard },
+    { to: '/equipos', label: t.teams, icon: Shield },
     { to: '/jugadores', label: t.players, icon: Users },
     { to: '/seleccionados', label: t.selectedPlayers, icon: Trophy },
     { to: '/convocatorias', label: t.callups, icon: ShieldAlert },
     { to: '/entrenamientos', label: t.training, icon: Dumbbell },
     { to: '/informes', label: t.reports, icon: FileSpreadsheet },
     { to: '/calendario', label: t.calendar, icon: Calendar },
-    { to: '/mapa', label: t.map, icon: MapPin },
-    { to: '/equipos', label: t.teams, icon: Settings }
+    { to: '/agenda', label: t.agenda || 'Agenda', icon: CalendarCheck },
+    { to: '/mapa', label: t.map, icon: MapPin }
   ];
 
   const adminItems = [

@@ -41,13 +41,22 @@ export type PlayerStatus =
   | 'Inactivo';
 
 export interface SportsData {
+  Convocados?: string | number;
+  Titular?: string | number;
+  Suplente?: string | number;
+  Jugados?: string | number;
+  Goles?: string | number;
+  'Media goles/partido'?: string | number;
+  Amarillas?: string | number;
+  'Doble amarilla'?: string | number;
+  Rojas?: string | number;
+  'Tarjeta verde'?: string | number;
   matches_played?: number;
   goals?: number;
   assists?: number;
   minutes?: number;
   yellow_cards?: number;
   red_cards?: number;
-  clean_sheets?: number;
   [key: string]: unknown;
 }
 
@@ -56,6 +65,8 @@ export interface Team {
   name: string;
   club: string;
   category_id?: string;
+  competition?: string;
+  group?: string;
   crest_url?: string;
   field_name?: string;
   address?: string;
@@ -293,3 +304,22 @@ export interface AuditLog {
   details?: Record<string, unknown>;
   created_at: string;
 }
+
+export interface ScoutingAgendaItem {
+  id: string;
+  match_id: string;
+  match?: Match;
+  selector_id?: string;
+  selector_name: string;
+  status: 'Planificat' | 'Observat';
+  scheduled_date?: string;
+  observed_at?: string;
+  home_team_name: string;
+  away_team_name: string;
+  observed_teams: string[];
+  notes?: string;
+  standout_players?: string[];
+  created_at: string;
+  updated_at?: string;
+}
+

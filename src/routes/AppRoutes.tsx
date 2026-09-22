@@ -18,6 +18,7 @@ import { AdminSettings } from '../pages/Admin/AdminSettings';
 import { AdminLogs } from '../pages/Admin/AdminLogs';
 import { Teams } from '../pages/Teams/Teams';
 import { CalendarView } from '../pages/Calendar/CalendarView';
+import { Agenda } from '../pages/Agenda/Agenda';
 import { SelectedPlayers } from '../pages/SelectedPlayers/SelectedPlayers';
 
 export const AppRoutes: React.FC = () => {
@@ -38,6 +39,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="/entrenamientos" element={<Training />} />
           <Route path="/informes" element={<Reports />} />
           <Route path="/calendario" element={<CalendarView />} />
+          <Route path="/agenda" element={<Agenda />} />
           <Route path="/mapa" element={<MatchMap />} />
           <Route path="/equipos" element={<Teams />} />
 

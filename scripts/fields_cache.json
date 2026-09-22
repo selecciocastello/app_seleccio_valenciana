@@ -21,6 +21,17 @@
     "latitude": 39.8825946,
     "longitude": -0.0883094
   },
+  "4937": {
+    "codigo_campo": "4937",
+    "nombre": "Campo Mpal. Enrique Saura Gil F-11 Onda ",
+    "direccion": "Calle Torrechiva, 2",
+    "localidad": "Onda",
+    "provincia": "Castellón",
+    "codigo_postal": "12200",
+    "superficie": "Hierba Artificial",
+    "latitude": 39.9688562,
+    "longitude": -0.2669558
+  },
   "4938": {
     "codigo_campo": "4938",
     "nombre": "Campo Mpal. La Cossa F-11 Onda ",
@@ -405,6 +416,17 @@
     "superficie": "Hierba Artificial",
     "latitude": 39.8650637,
     "longitude": -0.1083155
+  },
+  "6808": {
+    "codigo_campo": "6808",
+    "nombre": "Ciutat Esptva. Vinaros F-11 ",
+    "direccion": "Centro Deportivo V.M.",
+    "localidad": "Vinaròs",
+    "provincia": "Castellón",
+    "codigo_postal": "12500",
+    "superficie": "Hierba Artificial",
+    "latitude": 40.4746779,
+    "longitude": 0.4555777
   },
   "7318": {
     "codigo_campo": "7318",

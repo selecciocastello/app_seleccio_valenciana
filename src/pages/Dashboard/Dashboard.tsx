@@ -106,7 +106,7 @@ export const Dashboard: React.FC = () => {
         </div>
 
         {/* Date Selector Pills (Idénticos a FFCV) */}
-        <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
           <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1">
             <button className="w-8 h-8 rounded-full bg-[#ff6600] text-white flex items-center justify-center shrink-0 shadow-md">
               <ChevronLeft className="w-4 h-4" />
@@ -124,7 +124,7 @@ export const Dashboard: React.FC = () => {
 
           <Link
             to="/convocatorias"
-            className="hidden sm:inline-flex items-center gap-2 px-4 py-2 bg-[#ff6600] hover:bg-orange-600 text-white text-xs font-black uppercase tracking-wider rounded-full shadow-md transition-all shrink-0"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-[#ff6600] hover:bg-orange-600 text-white text-xs font-black uppercase tracking-wider rounded-full shadow-md transition-all shrink-0"
           >
             <ShieldAlert className="w-4 h-4" /> Nova Convocatòria
           </Link>
@@ -141,41 +141,73 @@ export const Dashboard: React.FC = () => {
         </div>
 
         {/* Grid de Cards de Equipos y Jugadores estilo FFCV */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
-          {players.slice(0, 4).map((player) => (
-            <Card key={player.id} className="p-5 space-y-3 bg-white border border-slate-200/90 shadow-sm">
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-black text-[#061338]">{player.team?.name || 'Club Castelló'}</h3>
-                <Badge status={player.status} />
-              </div>
+        {(() => {
+          const activeObserved = players.filter(
+            (p) => p.status === 'Observado' || p.status === 'Preseleccionado' || p.status === 'Seleccionado'
+          );
 
-              <div className="space-y-1">
-                <p className="text-xs font-bold text-slate-600">Jugadors en seguiment</p>
-                <p className="text-[11px] text-slate-400 font-semibold">Posició: {player.position} | Dorsal #{player.jersey_number || 10}</p>
-              </div>
-
-              {/* Player Card pill internal like FFCV */}
-              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-[#002568] text-white flex items-center justify-center font-black text-sm uppercase shadow">
-                    {player.first_name[0]}
-                    {player.last_name[0]}
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-black text-slate-900 uppercase">{player.full_name}</h4>
-                    <p className="text-[11px] text-[#ff6600] font-bold">1 convocatòria autonòmica</p>
-                  </div>
+          if (activeObserved.length === 0) {
+            return (
+              <Card className="p-8 text-center bg-white border border-dashed border-slate-200 shadow-sm space-y-3">
+                <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center">
+                  <Users className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-slate-800 uppercase tracking-wide">
+                    Sense jugadors en seguiment prioritari
+                  </h4>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+                    Actualment la llista de candidats i preseleccionats està buida. Pots marcar jugadors com a observats o candidats des del cens o en finalitzar una observació en l'Agenda.
+                  </p>
                 </div>
                 <Link
-                  to={`/jugadores/${player.id}`}
-                  className="px-3 py-1.5 bg-[#061338] hover:bg-[#002568] text-white font-bold text-[11px] rounded-full transition-colors"
+                  to="/jugadores"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-[#061338] hover:bg-[#002568] text-white text-xs font-bold rounded-full transition-all"
                 >
-                  Perfil
+                  <Users className="w-3.5 h-3.5" /> Explorar Cens de Jugadors
                 </Link>
-              </div>
-            </Card>
-          ))}
-        </div>
+              </Card>
+            );
+          }
+
+          return (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
+              {activeObserved.slice(0, 4).map((player) => (
+                <Card key={player.id} className="p-5 space-y-3 bg-white border border-slate-200/90 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-base font-black text-[#061338]">{player.team?.name || 'Club Castelló'}</h3>
+                    <Badge status={player.status} />
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-slate-600">Jugadors en seguiment</p>
+                    <p className="text-[11px] text-slate-400 font-semibold">Posició: {player.position} | Dorsal #{player.jersey_number || 10}</p>
+                  </div>
+
+                  {/* Player Card pill internal like FFCV */}
+                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-[#002568] text-white flex items-center justify-center font-black text-sm uppercase shadow">
+                        {player.first_name[0]}
+                        {player.last_name[0]}
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black text-slate-900 uppercase">{player.full_name}</h4>
+                        <p className="text-[11px] text-[#ff6600] font-bold">Estat: {player.status}</p>
+                      </div>
+                    </div>
+                    <Link
+                      to={`/jugadores/${player.id}`}
+                      className="px-3 py-1.5 bg-[#061338] hover:bg-[#002568] text-white font-bold text-[11px] rounded-full transition-colors"
+                    >
+                      Perfil
+                    </Link>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       {/* 4. Próximos Eventos y Calendario */}

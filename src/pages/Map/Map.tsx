@@ -60,19 +60,19 @@ export const MatchMap: React.FC = () => {
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-black text-white uppercase tracking-wider">
+        <h1 className="text-2xl font-black text-[#061338] uppercase tracking-wider">
           Mapa de Partits i Camps de Castelló
         </h1>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs font-semibold text-slate-600 mt-1">
           Ubicació geogràfica de trobades dels equips de la nostra selecció
         </p>
       </div>
 
       {/* Selector de Jugador para destacar sus partidos */}
-      <Card className="p-4 space-y-3">
+      <Card className="p-4 bg-white border border-slate-200 space-y-3">
         <div className="flex flex-col md:flex-row items-center gap-4">
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-300 shrink-0">
-            <Users className="w-4 h-4 text-emerald-400" />
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-700 shrink-0">
+            <Users className="w-4 h-4 text-[#ff6600]" />
             <span>Seleccionar Jugador per a veure els seus pròxims partits:</span>
           </div>
           <select
@@ -81,7 +81,7 @@ export const MatchMap: React.FC = () => {
               setSelectedPlayerId(e.target.value);
               if (e.target.value !== 'all') setSelectedTeamId('all');
             }}
-            className="w-full md:w-auto bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+            className="w-full md:w-auto bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#002568]"
           >
             <option value="all">Tots els jugadors i partits</option>
             {players.map((p) => (

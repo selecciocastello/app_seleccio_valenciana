@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Player } from '../../types/models';
+import { JerseyBadge } from '../ui/JerseyBadge';
 
 interface SoccerPitchProps {
   players: Player[];
@@ -94,14 +95,16 @@ const PlayerPin: React.FC<PlayerPinProps> = ({ player, color, onClick }) => {
       onClick={() => onClick && onClick(player)}
       className="group flex flex-col items-center gap-1 transition-transform hover:scale-110 focus:outline-none"
     >
-      <div
-        className={`w-9 h-9 md:w-11 md:h-11 rounded-full ${color} text-white font-black text-xs md:text-sm border-2 border-white flex items-center justify-center shadow-lg group-hover:ring-4 group-hover:ring-[#ff6600]/50`}
-      >
-        {player.jersey_number || player.first_name[0]}
-      </div>
-      <div className="bg-[#061338]/90 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/20 text-center max-w-[90px] truncate shadow">
+      <JerseyBadge
+        number={player.jersey_number || 10}
+        size="sm"
+        variant="kit"
+        color={color.includes('orange') || color.includes('ff6600') ? 'orange' : 'blue'}
+        className="group-hover:ring-4 group-hover:ring-amber-400/50"
+      />
+      <div className="bg-[#061338]/90 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/20 text-center max-w-[90px] truncate shadow mt-0.5">
         <p className="text-[9px] md:text-[10px] font-black text-white truncate uppercase leading-tight">
-          {player.first_name} {player.last_name.split(' ')[0]}
+          {player.first_name} {player.last_name?.split(' ')[0] || ''}
         </p>
         <p className="text-[8px] font-bold text-sky-300 truncate">{player.position}</p>
       </div>

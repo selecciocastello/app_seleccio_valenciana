@@ -53,8 +53,8 @@ export const Reports: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-white uppercase tracking-wider">{t.reports}</h1>
-          <p className="text-xs text-slate-400">
+          <h1 className="text-2xl font-black text-[#061338] uppercase tracking-wider">{t.reports}</h1>
+          <p className="text-xs font-semibold text-slate-600">
             Avaluació tècnica, tàctica i evolució dels candidats de Castelló
           </p>
         </div>
@@ -83,7 +83,7 @@ export const Reports: React.FC = () => {
             </div>
 
             {/* Puntuaciones por Criterios */}
-            <div className="grid grid-cols-4 gap-2 pt-2 text-center">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 text-center">
               <div className="p-2 bg-slate-950/80 border border-slate-800 rounded-lg">
                 <span className="text-[10px] text-slate-400 font-bold block uppercase">Tècnica</span>
                 <span className="text-sm font-black text-amber-400">{report.scores?.TECNICA || 8}/10</span>
@@ -131,7 +131,7 @@ export const Reports: React.FC = () => {
             </select>
           </div>
 
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <div>
               <label className="block text-[10px] font-semibold text-slate-300 mb-1">Tècnica (1-10)</label>
               <input
@@ -191,7 +191,7 @@ export const Reports: React.FC = () => {
 
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">Resum Tàctic i Físic</label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input
                 type="text"
                 value={tactical}

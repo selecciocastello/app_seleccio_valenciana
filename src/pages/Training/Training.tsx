@@ -48,8 +48,8 @@ export const Training: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-white uppercase tracking-wider">{t.training}</h1>
-          <p className="text-xs text-slate-400">
+          <h1 className="text-2xl font-black text-[#061338] uppercase tracking-wider">{t.training}</h1>
+          <p className="text-xs font-semibold text-slate-600">
             Planificació de sessions, exercicis i control d'assistència
           </p>
         </div>
@@ -87,37 +87,53 @@ export const Training: React.FC = () => {
               {/* Registro Rápido de Asistencia */}
               <div className="pt-3 border-t border-slate-800">
                 <h4 className="text-xs font-bold text-slate-300 mb-3">Control d'Assistència de Jugadors Convocats:</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {players.slice(0, 6).map((player) => {
-                    const attended = attendanceState[player.id] ?? true;
+                {(() => {
+                  const trainingPlayers = players.filter(
+                    (p) => p.status === 'Seleccionado' || p.status === 'Preseleccionado'
+                  );
+
+                  if (trainingPlayers.length === 0) {
                     return (
-                      <div
-                        key={player.id}
-                        className="flex items-center justify-between p-2.5 bg-slate-950/60 border border-slate-800 rounded-xl text-xs"
-                      >
-                        <span className="font-semibold text-white">{player.full_name}</span>
-                        <button
-                          onClick={() => toggleAttendance(player.id)}
-                          className={`flex items-center gap-1 px-2 py-1 rounded-lg font-bold text-[10px] transition-colors ${
-                            attended
-                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                              : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                          }`}
-                        >
-                          {attended ? (
-                            <>
-                              <CheckCircle2 className="w-3 h-3" /> Asistió (86.7%)
-                            </>
-                          ) : (
-                            <>
-                              <XCircle className="w-3 h-3" /> No Asistió
-                            </>
-                          )}
-                        </button>
-                      </div>
+                      <p className="text-xs text-slate-500 italic p-3 bg-slate-950/40 rounded-xl border border-slate-800">
+                        No hi ha jugadors seleccionats per a aquesta sessió d'entrenament.
+                      </p>
                     );
-                  })}
-                </div>
+                  }
+
+                  return (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {trainingPlayers.map((player) => {
+                        const attended = attendanceState[player.id] ?? true;
+                        return (
+                          <div
+                            key={player.id}
+                            className="flex items-center justify-between p-2.5 bg-slate-950/60 border border-slate-800 rounded-xl text-xs"
+                          >
+                            <span className="font-semibold text-white">{player.full_name}</span>
+                            <button
+                              onClick={() => toggleAttendance(player.id)}
+                              className={`flex items-center gap-1 px-2 py-1 rounded-lg font-bold text-[10px] transition-colors ${
+                                attended
+                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                  : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                              }`}
+                            >
+                              {attended ? (
+                                <>
+                                  <CheckCircle2 className="w-3 h-3" /> Assistit
+                                </>
+                              ) : (
+                                <>
+                                  <XCircle className="w-3 h-3" /> No Assistit
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             </Card>
           ))}

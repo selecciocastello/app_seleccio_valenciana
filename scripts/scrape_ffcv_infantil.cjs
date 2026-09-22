@@ -98,43 +98,41 @@ function parseTime(timeStr) {
  * Determina si un jugador es "Infantil 1er año", "Infantil 2º año" o "Desconocido"
  * según el historial de la temporada anterior (2025-2026).
  */
-function calculateInfantilYear(history) {
-  if (!history || !Array.isArray(history) || history.length === 0) {
-    return 'Desconocido';
+function calculateInfantilYear(history, age) {
+  if (history && Array.isArray(history) && history.length > 0) {
+    // Filtrar todas las temporadas anteriores a la actual (2026-2027)
+    const prevSeasons = history.filter(h => {
+      const t = (h.temporada || '').toLowerCase().replace(/\s+/g, '');
+      return !t.startsWith('2026-2027') && !t.startsWith('26-27') && !t.startsWith('2026/2027');
+    });
+
+    if (prevSeasons.length > 0) {
+      const allPrevCategories = prevSeasons.map(h =>
+        (h.categoria || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').trim()
+      );
+
+      // Regla FFCV: Si en la temporada anterior aparece Cadete o Infantil -> es Infantil 2º año
+      const hasCadeteOrInfantil = allPrevCategories.some(cat =>
+        cat.includes('cadet') || cat.includes('infantil')
+      );
+      if (hasCadeteOrInfantil) {
+        return 'Infantil 2º año';
+      }
+
+      // Si en la temporada anterior era Alevín (Aleví) -> es Infantil 1er año
+      const hasAlevin = allPrevCategories.some(cat =>
+        cat.includes('alevin') || cat.includes('alevi')
+      );
+      if (hasAlevin) {
+        return 'Infantil 1er año';
+      }
+    }
   }
 
-  // Buscar temporada 2025-2026 (anterior a la actual 2026-2027)
-  const prevSeason = history.find(h => {
-    const t = (h.temporada || '').replace(/\s+/g, '');
-    return t.includes('2025-2026') || t.includes('25-26') || t.includes('2025/2026');
-  });
-
-  if (!prevSeason || !prevSeason.categoria) {
-    return 'Desconocido';
-  }
-
-  const cat = prevSeason.categoria.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').trim();
-
-  // Si en la 2025-2026 era Alevín 2º año -> actualmente es Infantil 1er año
-  if (
-    cat.includes('alevin 2') ||
-    cat.includes('alevi 2') ||
-    cat.includes('alevin 2o') ||
-    cat.includes('alevin 2do') ||
-    cat.includes('alevin 2.') ||
-    cat.includes('alevi 2.')
-  ) {
-    return 'Infantil 1er año';
-  }
-
-  // Si en la 2025-2026 ya competía en categoría Infantil -> actualmente es Infantil 2º año
-  if (cat.includes('infantil')) {
-    return 'Infantil 2º año';
-  }
-
-  // Si en la 2025-2026 era Alevín 1er año (jugador adelantado)
-  if (cat.includes('alevin 1') || cat.includes('alevi 1')) {
-    return 'Infantil 1er año';
+  // Fallback por edad federativa si está disponible
+  if (typeof age === 'number' && !isNaN(age)) {
+    if (age >= 13) return 'Infantil 2º año';
+    if (age === 12) return 'Infantil 1er año';
   }
 
   return 'Desconocido';
@@ -234,16 +232,35 @@ async function trySaveToSupabase(matches, teams, players) {
 
     // Upsert Players
     if (players && players.length > 0) {
+      // Obtener mapeo de equipos para asignar team_id.
+      // IMPORTANTE: solo por nombre EXACTO del equipo (con la letra 'A'/'B'/'C').
+      // Mapear también por `club` es ambiguo cuando un mismo club tiene varios
+      // equipos (p.ej. 'Primer Toque C.F.' con equipos 'B' y 'C'): el último
+      // equipo procesado sobreescribía la entrada del club y todos los
+      // jugadores sin letra en su campo `team` acababan agrupados en ese único
+      // equipo, vaciando el resto.
+      const { data: dbTeamsList } = await supabase.from('teams').select('id, name');
+      const teamNameToId = new Map();
+      if (dbTeamsList) {
+        for (const t of dbTeamsList) {
+          if (t.name) teamNameToId.set(t.name.trim().toLowerCase(), t.id);
+        }
+      }
+
       const dbPlayers = players.map(p => {
         const names = (p.full_name || '').split(',');
         const lastName = names[0] ? names[0].trim() : '';
         const firstName = names[1] ? names[1].trim() : (p.full_name || '');
+        const teamKey = (p.team || '').trim().toLowerCase();
+        const teamId = teamNameToId.get(teamKey) || null;
+
         return {
           first_name: firstName,
           last_name: lastName,
           position: p.position || 'Candidato',
-          jersey_number: p.jersey_number,
+          jersey_number: p.dorsal ? parseInt(p.dorsal, 10) : (p.jersey_number || null),
           photo_url: p.photo_url,
+          team_id: teamId,
           city: p.city || 'Castelló',
           status: 'Candidato',
           sports_data: p.sports_data || {},
@@ -312,45 +329,53 @@ function getChromiumLaunchOptions(headless) {
       if (acceptBtn) await acceptBtn.click();
     } catch (e) {}
 
-    // ── 0. Comprobar si Segona Infantil ya está disponible en el selector ──────────
-    const availableComps = await page.evaluate(() => {
-      const sel = document.getElementById('sel-competicion');
-      if (!sel) return [];
-      return Array.from(sel.options).map(o => ({ id: o.value, name: o.text.trim() }));
-    });
-
-    const segonaComp = availableComps.find(c => {
-      const n = c.name.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
-      return n.includes('segona infantil') || n.includes('segunda infantil') || n.includes('2a infantil');
-    });
+    // ── 0. Comprobar si Segona Infantil ya está disponible en FFCV ──────────
+    console.log('\n🔍 Comprobando disponibilidad de Segona Regional Infantil (Grupos 1 al 4 de Castelló)...');
+    let segonaComp = null;
+    try {
+      const res = await fetch(`https://ffcv.es/competiciones/api/filtros/competiciones_fetch.php?cod_temporada=${encodeURIComponent(TARGET_TEMPORADA)}`, {
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const found = (data.competiciones || []).find(c => {
+          const n = (c.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          return (n.includes('segona') || n.includes('segunda') || n.includes('2a') || n.includes('2ª') || n.includes('2 regional')) &&
+                 n.includes('infantil') && !n.includes('futsal') && !n.includes('platja');
+        });
+        if (found) {
+          const grpRes = await fetch(`https://ffcv.es/competiciones/api/filtros/grupos_fetch.php?cod_competicion=${encodeURIComponent(found.codigo)}`, {
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+          });
+          if (grpRes.ok) {
+            const grpData = await grpRes.json();
+            const castellonGroups = (grpData.grupos || []).filter(g => {
+              const m = g.nombre.match(/\b([1-4])\b/) || g.nombre.match(/grup[^\d]*([1-4])/i);
+              return Boolean(m);
+            });
+            if (castellonGroups.length > 0) {
+              segonaComp = {
+                id: String(found.codigo),
+                name: found.nombre,
+                groups: castellonGroups.map(g => ({ id: String(g.codigo), name: g.nombre }))
+              };
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('⚠️ No se pudo consultar la API de competiciones FFCV:', e.message);
+    }
 
     const competitionsToScrape = [...TARGET_COMPETITIONS];
 
-    if (segonaComp) {
-      console.log(`\n🎉 ¡Detectada Segona Infantil en FFCV! (ID: ${segonaComp.id})`);
-      // Obtener los grupos de Segona Infantil
-      await page.selectOption('#sel-competicion', segonaComp.id);
-      await page.waitForTimeout(2000);
-      const segonaGroups = await page.evaluate(() => {
-        const sel = document.getElementById('sel-grupo');
-        if (!sel) return [];
-        return Array.from(sel.options).map(o => ({ id: o.value, name: o.text.trim() }));
-      });
-      // Filtrar grupos 1 a 4
-      const targetSegonaGroups = segonaGroups.filter(g => {
-        const m = g.name.match(/\b([1-4])\b/);
-        return Boolean(m);
-      });
-      if (targetSegonaGroups.length > 0) {
-        console.log(`   Grupos encontrados: ${targetSegonaGroups.map(g => g.name).join(', ')}`);
-        competitionsToScrape.push({
-          id: segonaComp.id,
-          name: segonaComp.name,
-          groups: targetSegonaGroups
-        });
-      }
+    if (segonaComp && segonaComp.groups.length > 0) {
+      console.log(`🎉 ¡Detectada ${segonaComp.name} (${segonaComp.id}) con ${segonaComp.groups.length} grupos de Castelló!`);
+      console.log(`   Grupos: ${segonaComp.groups.map(g => g.name).join(', ')}`);
+      competitionsToScrape.push(segonaComp);
     } else {
-      console.log('ℹ️  Segona Infantil: aún no tiene calendario publicado en FFCV (se sincronizará automáticamente cuando FFCV lo publique).');
+      console.log('ℹ️  Segona Regional Infantil (Grupos 1 al 4 de Castelló):');
+      console.log('   La FFCV aún no ha publicado los calendarios. El sistema los revisará automáticamente cada semana y los incorporará en cuanto FFCV los publique.');
     }
 
     // ── 1. RASPADO DE PARTIDOS / AGENDA ──────────────────────────────────────────
@@ -658,7 +683,7 @@ function getChromiumLaunchOptions(headless) {
                 }
 
                 // Determinar el año infantil
-                const infantilYear = calculateInfantilYear(history);
+                const infantilYear = calculateInfantilYear(history, profileData.age);
 
                 const playerRecord = {
                   id: `ffcv-p-${codJugador}`,

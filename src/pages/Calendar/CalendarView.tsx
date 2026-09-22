@@ -116,23 +116,23 @@ export const CalendarView: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-white uppercase tracking-wider flex items-center gap-3">
+          <h1 className="text-2xl font-black text-[#061338] uppercase tracking-wider flex items-center gap-3">
             <span>Agenda i Calendari de Partits</span>
-            <span className="bg-[#ff6600]/20 text-[#ff6600] border border-[#ff6600]/40 text-xs px-2.5 py-0.5 rounded-full font-bold">
+            <span className="bg-[#ff6600]/10 text-[#ff6600] border border-[#ff6600]/30 text-xs px-2.5 py-0.5 rounded-full font-black">
               FFCV Oficial
             </span>
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs font-semibold text-slate-600 mt-1">
             Partits oficials de futbol infantil (Preferent i Primera Infantil), instal·lacions, àrbitres i geolocalització GPS
           </p>
         </div>
 
         {/* Tab Selector Principal */}
-        <div className="flex items-center bg-slate-900/90 p-1 rounded-2xl border border-slate-800 shrink-0">
+        <div className="flex items-center bg-slate-900/90 p-1 rounded-2xl border border-slate-800 shrink-0 overflow-x-auto custom-scrollbar w-full sm:w-auto">
           <button
             onClick={() => setActiveMainTab('matches')}
             className={clsx(
-              "px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2",
+              "px-3 sm:px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 whitespace-nowrap shrink-0",
               activeMainTab === 'matches'
                 ? "bg-[#002568] text-white shadow-md"
                 : "text-slate-400 hover:text-white"
@@ -144,7 +144,7 @@ export const CalendarView: React.FC = () => {
           <button
             onClick={() => setActiveMainTab('events')}
             className={clsx(
-              "px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2",
+              "px-3 sm:px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 whitespace-nowrap shrink-0",
               activeMainTab === 'events'
                 ? "bg-[#002568] text-white shadow-md"
                 : "text-slate-400 hover:text-white"
@@ -257,7 +257,7 @@ export const CalendarView: React.FC = () => {
                             (e.target as HTMLElement).style.display = 'none';
                           }}
                         />
-                        <span className="truncate" title={m.home_team_name}>{m.home_team_name}</span>
+                        <span className="team-row-name" title={m.home_team_name}>{m.home_team_name}</span>
                         {m.home_position && (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-300 border border-sky-500/20 ml-auto shrink-0 hidden sm:inline-block">
                             Posició {m.home_position} · {m.home_points ?? 0} pts
@@ -277,7 +277,7 @@ export const CalendarView: React.FC = () => {
                             (e.target as HTMLElement).style.display = 'none';
                           }}
                         />
-                        <span className="truncate" title={m.away_team_name}>{m.away_team_name}</span>
+                        <span className="team-row-name" title={m.away_team_name}>{m.away_team_name}</span>
                         {m.away_position && (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-300 border border-sky-500/20 ml-auto shrink-0 hidden sm:inline-block">
                             Posició {m.away_position} · {m.away_points ?? 0} pts
@@ -315,13 +315,13 @@ export const CalendarView: React.FC = () => {
                   </div>
 
                   {/* Sub-barra: Campo y Navegación GPS directa */}
-                  <div className="flex items-center justify-between px-2 text-[11px] text-slate-400">
-                    <div className="flex items-center gap-1.5 truncate max-w-[70%]">
-                      <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                      <span className="font-semibold text-slate-300 truncate" title={m.field_name}>
+                  <div className="flex items-start justify-between gap-2 px-2 text-[11px] text-slate-400">
+                    <div className="flex items-start gap-1.5 max-w-[70%]">
+                      <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                      <span className="font-semibold text-slate-300 line-clamp-2 break-words">
                         {m.field_name || 'Camp per determinar'}
+                        {m.city && <span className="text-slate-500"> ({m.city})</span>}
                       </span>
-                      {m.city && <span className="text-slate-500 truncate">({m.city})</span>}
                     </div>
 
                     {m.latitude && m.longitude ? (
@@ -373,23 +373,23 @@ export const CalendarView: React.FC = () => {
             </div>
 
             {/* Contenido del Modal */}
-            <div className="p-6 space-y-6">
+            <div className="p-4 sm:p-6 space-y-6">
               {/* Marcador Principal y Equipos */}
               <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-2xl p-5 shadow-inner">
-                <div className="grid grid-cols-12 items-center gap-4">
+                <div className="grid grid-cols-12 items-center gap-2 sm:gap-4">
                   {/* Local */}
-                  <div className="col-span-5 flex flex-col items-center text-center space-y-2">
-                    <div className="w-16 h-16 rounded-2xl bg-slate-900/90 border border-slate-800 p-2 flex items-center justify-center shadow-lg">
+                  <div className="col-span-5 flex flex-col items-center text-center space-y-2 min-w-0">
+                    <div className="w-11 h-11 sm:w-16 sm:h-16 rounded-2xl bg-slate-900/90 border border-slate-800 p-1.5 sm:p-2 flex items-center justify-center shadow-lg">
                       <img
                         src={selectedMatch.home_crest || 'https://appwebffcv.novanet.es/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201211/14/12043583.jpg'}
                         alt={selectedMatch.home_team_name || 'Local'}
-                        className="w-12 h-12 object-contain"
+                        className="w-8 h-8 sm:w-12 sm:h-12 object-contain"
                       />
                     </div>
-                    <h3 className="text-sm font-black text-white uppercase tracking-tight">
+                    <h3 className="text-[11px] sm:text-sm font-black text-white uppercase tracking-tight w-full line-clamp-2 break-words">
                       {selectedMatch.home_team_name}
                     </h3>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                    <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">
                       Local
                     </span>
                   </div>
@@ -413,18 +413,18 @@ export const CalendarView: React.FC = () => {
                   </div>
 
                   {/* Visitante */}
-                  <div className="col-span-5 flex flex-col items-center text-center space-y-2">
-                    <div className="w-16 h-16 rounded-2xl bg-slate-900/90 border border-slate-800 p-2 flex items-center justify-center shadow-lg">
+                  <div className="col-span-5 flex flex-col items-center text-center space-y-2 min-w-0">
+                    <div className="w-11 h-11 sm:w-16 sm:h-16 rounded-2xl bg-slate-900/90 border border-slate-800 p-1.5 sm:p-2 flex items-center justify-center shadow-lg">
                       <img
                         src={selectedMatch.away_crest || 'https://appwebffcv.novanet.es/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201306/21/12080863.jpg'}
                         alt={selectedMatch.away_team_name || 'Visitant'}
-                        className="w-12 h-12 object-contain"
+                        className="w-8 h-8 sm:w-12 sm:h-12 object-contain"
                       />
                     </div>
-                    <h3 className="text-sm font-black text-white uppercase tracking-tight">
+                    <h3 className="text-[11px] sm:text-sm font-black text-white uppercase tracking-tight w-full line-clamp-2 break-words">
                       {selectedMatch.away_team_name}
                     </h3>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                    <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
                       Visitant
                     </span>
                   </div>
@@ -583,7 +583,7 @@ export const CalendarView: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Jugadores Local */}
                   <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3">
-                    <span className="text-xs font-black text-sky-400 uppercase block truncate">
+                    <span className="text-xs font-black text-sky-400 uppercase block line-clamp-2 break-words">
                       {selectedMatch.home_team_name} ({matchRosters.homePlayers.length})
                     </span>
                     {matchRosters.homePlayers.length === 0 ? (
@@ -602,7 +602,7 @@ export const CalendarView: React.FC = () => {
                                 alt={p.full_name}
                                 className="w-7 h-7 rounded-full object-cover bg-slate-800 shrink-0"
                               />
-                              <span className="text-xs font-bold text-white truncate">{p.full_name}</span>
+                              <span className="text-xs font-bold text-white line-clamp-2 break-words">{p.full_name}</span>
                             </div>
                             <span
                               className={clsx(
@@ -624,7 +624,7 @@ export const CalendarView: React.FC = () => {
 
                   {/* Jugadores Visitante */}
                   <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3">
-                    <span className="text-xs font-black text-sky-400 uppercase block truncate">
+                    <span className="text-xs font-black text-sky-400 uppercase block line-clamp-2 break-words">
                       {selectedMatch.away_team_name} ({matchRosters.awayPlayers.length})
                     </span>
                     {matchRosters.awayPlayers.length === 0 ? (
@@ -643,7 +643,7 @@ export const CalendarView: React.FC = () => {
                                 alt={p.full_name}
                                 className="w-7 h-7 rounded-full object-cover bg-slate-800 shrink-0"
                               />
-                              <span className="text-xs font-bold text-white truncate">{p.full_name}</span>
+                              <span className="text-xs font-bold text-white line-clamp-2 break-words">{p.full_name}</span>
                             </div>
                             <span
                               className={clsx(
@@ -681,19 +681,19 @@ export const CalendarView: React.FC = () => {
             {callups.map((c) => (
               <div
                 key={c.id}
-                className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl flex items-center justify-between gap-4"
+                className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4"
               >
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-blue-500/10 text-blue-400 rounded-lg">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="p-2.5 bg-blue-500/10 text-blue-400 rounded-lg shrink-0">
                     <ShieldAlert className="w-5 h-5" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <span className="text-[10px] font-bold text-blue-400 uppercase">Convocatòria Oficial</span>
-                    <h4 className="text-sm font-bold text-white">{c.title}</h4>
-                    <p className="text-xs text-slate-400">{c.location}</p>
+                    <h4 className="text-sm font-bold text-white line-clamp-2 break-words">{c.title}</h4>
+                    <p className="text-xs text-slate-400 line-clamp-2 break-words">{c.location}</p>
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="text-left sm:text-right shrink-0">
                   <Badge status={c.status} />
                   <p className="text-xs font-semibold text-slate-400 mt-1">
                     {new Date(c.date).toLocaleDateString('ca-ES')}
@@ -705,19 +705,19 @@ export const CalendarView: React.FC = () => {
             {trainings.map((t) => (
               <div
                 key={t.id}
-                className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl flex items-center justify-between gap-4"
+                className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4"
               >
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-emerald-500/10 text-emerald-400 rounded-lg">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="p-2.5 bg-emerald-500/10 text-emerald-400 rounded-lg shrink-0">
                     <Dumbbell className="w-5 h-5" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <span className="text-[10px] font-bold text-emerald-400 uppercase">Entrenament Tàctic</span>
-                    <h4 className="text-sm font-bold text-white">{t.title}</h4>
-                    <p className="text-xs text-slate-400">{t.location}</p>
+                    <h4 className="text-sm font-bold text-white line-clamp-2 break-words">{t.title}</h4>
+                    <p className="text-xs text-slate-400 line-clamp-2 break-words">{t.location}</p>
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="text-left sm:text-right shrink-0">
                   <Badge variant="success">Programat</Badge>
                   <p className="text-xs font-semibold text-slate-400 mt-1">
                     {new Date(t.start_time).toLocaleDateString('ca-ES')}

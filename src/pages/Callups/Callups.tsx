@@ -24,7 +24,7 @@ export const Callups: React.FC = () => {
   const [notes, setNotes] = useState('');
 
   const activeCallup = callups.find((c) => c.id === selectedCallupId) || callups[0];
-  const activePlayers = activeCallup?.callup_players?.map((cp) => cp.player!).filter(Boolean) || players.slice(0, 16);
+  const activePlayers = activeCallup?.callup_players?.map((cp) => cp.player!).filter(Boolean) || [];
 
   // Demarcaciones
   const porteros = activePlayers.filter((p) => p.position === 'Portero');
@@ -45,12 +45,16 @@ export const Callups: React.FC = () => {
       return;
     }
 
+    const selectedPlayers = players.filter(
+      (p) => p.status === 'Seleccionado' || p.status === 'Preseleccionado'
+    );
+
     createCallup({
       title,
       date: new Date(date).toISOString(),
       location,
       notes,
-      callup_players: players.slice(0, 16).map((p) => ({
+      callup_players: selectedPlayers.map((p) => ({
         id: `cp_${p.id}`,
         callup_id: 'new',
         player_id: p.id,
@@ -60,7 +64,7 @@ export const Callups: React.FC = () => {
       }))
     });
 
-    showToast('Convocatòria creada correctament amb la plantilla seleccionada', 'success');
+    showToast('Convocatòria creada correctament', 'success');
     setIsModalOpen(false);
     setTitle('');
     setDate('');
@@ -88,12 +92,12 @@ export const Callups: React.FC = () => {
       {/* Selector de Convocatoria Activa & View Mode */}
       <Card className="p-4 bg-white space-y-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             <span className="text-xs font-black uppercase text-[#061338]">Convocatòria Activa:</span>
             <select
               value={selectedCallupId}
               onChange={(e) => setSelectedCallupId(e.target.value)}
-              className="bg-slate-50 border border-slate-200 text-[#061338] text-xs font-bold rounded-2xl px-3 py-2 focus:outline-none"
+              className="w-full sm:w-auto bg-slate-50 border border-slate-200 text-[#061338] text-xs font-bold rounded-2xl px-3 py-2 focus:outline-none"
             >
               {callups.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -103,10 +107,10 @@ export const Callups: React.FC = () => {
             </select>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-full border border-slate-200">
+          <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-full border border-slate-200 overflow-x-auto custom-scrollbar">
             <button
               onClick={() => setViewMode('pitch')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
                 viewMode === 'pitch' ? 'bg-[#061338] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -114,7 +118,7 @@ export const Callups: React.FC = () => {
             </button>
             <button
               onClick={() => setViewMode('list')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
                 viewMode === 'list' ? 'bg-[#061338] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -221,7 +225,7 @@ export const Callups: React.FC = () => {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">Data</label>
               <input
@@ -277,13 +281,13 @@ export const Callups: React.FC = () => {
 
 const PlayerCardMini: React.FC<{ player: Player }> = ({ player }) => (
   <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-100 rounded-2xl">
-    <div className="flex items-center gap-2.5 truncate">
+    <div className="flex items-center gap-2.5 min-w-0">
       <div className="w-7 h-7 rounded-full bg-[#002568] text-white flex items-center justify-center font-bold text-xs uppercase shrink-0">
         {player.jersey_number || player.first_name[0]}
       </div>
-      <div className="truncate">
-        <p className="text-xs font-bold text-slate-900 truncate">{player.full_name}</p>
-        <p className="text-[10px] text-slate-500 truncate">{player.team?.name}</p>
+      <div className="min-w-0">
+        <p className="text-xs font-bold text-slate-900 line-clamp-2 break-words">{player.full_name}</p>
+        <p className="text-[10px] text-slate-500 line-clamp-2 break-words">{player.team?.name}</p>
       </div>
     </div>
     <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />

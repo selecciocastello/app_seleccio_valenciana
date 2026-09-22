@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Search, Plus, Database } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import clsx from 'clsx';
@@ -8,6 +8,7 @@ import { Modal } from '../../components/ui/Modal';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAppStore } from '../../hooks/useAppStore';
 import { useToast } from '../../contexts/ToastContext';
+import { JerseyBadge } from '../../components/ui/JerseyBadge';
 import type { PlayerStatus } from '../../types/models';
 
 export const Players: React.FC = () => {
@@ -29,19 +30,30 @@ export const Players: React.FC = () => {
   const [teamId, setTeamId] = useState(teams[0]?.id || '');
   const [status, setStatus] = useState<PlayerStatus>('Candidato');
 
-  const filteredPlayers = players.filter((p) => {
-    const matchesSearch =
-      p.full_name.toLowerCase().includes(search.toLowerCase()) ||
-      p.team?.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.position?.toLowerCase().includes(search.toLowerCase());
+  const filteredPlayers = useMemo(() => {
+    const searchLower = search.trim().toLowerCase();
+    const result = players.filter((p) => {
+      const pName = (p.full_name || '').toLowerCase();
+      const pTeam = (p.team?.name || '').toLowerCase();
+      const pPos = (p.position || '').toLowerCase();
 
-    const matchesStatus = selectedStatus === 'all' || p.status === selectedStatus;
-    const matchesTeam = selectedTeam === 'all' || p.team_id === selectedTeam;
-    const matchesPosition = selectedPosition === 'all' || p.position === selectedPosition;
-    const matchesInfantilYear = selectedInfantilYear === 'all' || p.infantil_year === selectedInfantilYear;
+      const matchesSearch =
+        !searchLower ||
+        pName.includes(searchLower) ||
+        pTeam.includes(searchLower) ||
+        pPos.includes(searchLower);
 
-    return matchesSearch && matchesStatus && matchesTeam && matchesPosition && matchesInfantilYear;
-  });
+      const matchesStatus = selectedStatus === 'all' || p.status === selectedStatus;
+      const matchesTeam = selectedTeam === 'all' || p.team_id === selectedTeam;
+      const matchesPosition = selectedPosition === 'all' || p.position === selectedPosition;
+      const matchesInfantilYear = selectedInfantilYear === 'all' || p.infantil_year === selectedInfantilYear;
+
+      return matchesSearch && matchesStatus && matchesTeam && matchesPosition && matchesInfantilYear;
+    });
+
+    result.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ca', { sensitivity: 'base' }));
+    return result;
+  }, [players, search, selectedStatus, selectedTeam, selectedPosition, selectedInfantilYear]);
 
   const handleCreatePlayer = (e: React.FormEvent) => {
     e.preventDefault();
@@ -159,32 +171,111 @@ export const Players: React.FC = () => {
         </div>
       </Card>
 
-      {/* Tabla de Jugadores */}
-      <Card className="overflow-hidden bg-white border border-slate-200">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="border-b border-slate-200 bg-[#061338] text-white font-black uppercase tracking-wider">
-                <th className="p-4">Jugador</th>
-                <th className="p-4">Any Infantil</th>
-                <th className="p-4">Posició</th>
-                <th className="p-4">Equip</th>
-                <th className="p-4">Edat</th>
-                <th className="p-4">Estat</th>
-                <th className="p-4">Font Dades</th>
-                <th className="p-4 text-right">Acció</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
-              {filteredPlayers.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="p-8 text-center text-slate-500 font-bold">
-                    No s'han trobat jugadors amb els filtres seleccionats.
-                  </td>
+      {/* Resum del cens de jugadors del scraping */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-semibold text-slate-600 px-1">
+        <span>
+          Mostrant <strong className="text-[#061338]">{filteredPlayers.length}</strong> de <strong className="text-[#061338]">{players.length}</strong> jugadors del cens oficial FFCV
+        </span>
+        <div className="flex items-center gap-3 text-[11px] font-bold">
+          <span className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+            {players.filter((p) => p.infantil_year === 'Infantil 2º año').length} de 2n Any
+          </span>
+          <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+            {players.filter((p) => p.infantil_year === 'Infantil 1er año').length} de 1r Any
+          </span>
+        </div>
+      </div>
+
+      {/* Llistat de Jugadors - Cards en mòbil */}
+      {filteredPlayers.length === 0 ? (
+        <Card className="p-8 text-center text-slate-500 font-bold bg-white border border-slate-200">
+          No s'han trobat jugadors amb els filtres seleccionats.
+        </Card>
+      ) : (
+        <div className="md:hidden space-y-3">
+          {filteredPlayers.map((player) => (
+            <Card key={player.id} className="p-4 bg-white border border-slate-200 space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="relative shrink-0">
+                  {player.photo_url ? (
+                    <img
+                      src={player.photo_url}
+                      alt={player.full_name}
+                      className="w-12 h-12 rounded-xl object-cover border border-slate-200 shadow-sm"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-xl bg-[#002568] text-white flex items-center justify-center font-black text-sm uppercase shadow-sm">
+                      {player.first_name[0]}
+                      {player.last_name[0]}
+                    </div>
+                  )}
+                  <div className="absolute -bottom-1.5 -right-1.5">
+                    <JerseyBadge number={player.jersey_number} size="xs" variant="kit" color="blue" />
+                  </div>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-black text-[#061338] uppercase line-clamp-2 break-words">{player.full_name}</p>
+                  <p className="text-[11px] text-slate-500 font-semibold mt-0.5">
+                    {player.position} · {player.team?.name}
+                  </p>
+                </div>
+                <Badge status={player.status} />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+                <span
+                  className={clsx(
+                    "px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider inline-flex items-center gap-1 border",
+                    player.infantil_year === 'Infantil 1er año' && "bg-sky-50 text-sky-700 border-sky-300",
+                    player.infantil_year === 'Infantil 2º año' && "bg-emerald-50 text-emerald-700 border-emerald-300",
+                    (!player.infantil_year || player.infantil_year === 'Desconocido') && "bg-slate-100 text-slate-600 border-slate-200"
+                  )}
+                >
+                  {player.infantil_year || 'Desconegut'}
+                </span>
+                <span className="text-[11px] font-semibold text-slate-500">
+                  {player.age ? `${player.age} anys` : (player.birth_date || 'Infantil')}
+                </span>
+              </div>
+
+              <Link
+                to={`/jugadores/${player.id}`}
+                className="flex items-center justify-center w-full py-2.5 bg-[#061338] hover:bg-[#002568] text-white font-bold text-xs rounded-full transition-colors"
+              >
+                Ver Perfil
+              </Link>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Taula de Jugadors - Escriptori */}
+      {filteredPlayers.length > 0 && (
+        <Card className="hidden md:block overflow-hidden bg-white border border-slate-200">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200 bg-[#061338] text-white font-black uppercase tracking-wider">
+                  <th className="p-4">Dorsal</th>
+                  <th className="p-4">Jugador</th>
+                  <th className="p-4">Any Infantil</th>
+                  <th className="p-4">Posició</th>
+                  <th className="p-4">Equip</th>
+                  <th className="p-4">Edat</th>
+                  <th className="p-4">Estat</th>
+                  <th className="p-4">Font Dades</th>
+                  <th className="p-4 text-right">Acció</th>
                 </tr>
-              ) : (
-                filteredPlayers.map((player) => (
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
+                {filteredPlayers.map((player) => (
                   <tr key={player.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="p-4">
+                      <JerseyBadge number={player.jersey_number} size="sm" variant="kit" color="blue" />
+                    </td>
                     <td className="p-4 font-black text-slate-900 flex items-center gap-3">
                       {player.photo_url ? (
                         <img
@@ -203,7 +294,7 @@ export const Players: React.FC = () => {
                       )}
                       <div>
                         <span className="text-sm font-black text-[#061338] uppercase">{player.full_name}</span>
-                        <p className="text-[11px] text-slate-500 font-semibold">Dorsal #{player.jersey_number || '-'}</p>
+                        <p className="text-[11px] text-slate-400 font-semibold">{player.position}</p>
                       </div>
                     </td>
                     <td className="p-4">
@@ -241,17 +332,17 @@ export const Players: React.FC = () => {
                       </Link>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       {/* Modal Nuevo Jugador */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Afegir Nou Jugador">
         <form onSubmit={handleCreatePlayer} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">Nom</label>
               <input
@@ -276,7 +367,7 @@ export const Players: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">Posició</label>
               <select

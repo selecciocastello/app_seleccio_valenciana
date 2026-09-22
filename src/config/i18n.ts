@@ -15,6 +15,7 @@ export interface Translations {
   matches: string;
   callups: string;
   calendar: string;
+  agenda: string;
   map: string;
   training: string;
   reports: string;
@@ -55,6 +56,7 @@ export const translations: Record<Language, Translations> = {
     matches: 'Partits',
     callups: 'Convocatòries',
     calendar: 'Calendari',
+    agenda: 'Agenda',
     map: 'Mapa de Partits',
     training: 'Entrenaments',
     reports: 'Informes Tècnics',
@@ -93,6 +95,7 @@ export const translations: Record<Language, Translations> = {
     matches: 'Partidos',
     callups: 'Convocatorias',
     calendar: 'Calendario',
+    agenda: 'Agenda',
     map: 'Mapa de Partidos',
     training: 'Entrenamientos',
     reports: 'Informes Técnicos',

@@ -153,6 +153,38 @@ function ensureDir(dirPath) {
   }
 }
 
+/**
+ * Parsea el nombre de un jugador según el formato de la FFCV:
+ * 1. Si contiene coma (ej: "RUIZ GAMEZ, GERARD"):
+ *    - Apellidos = antes de la coma ("RUIZ GAMEZ")
+ *    - Nombre = después de la coma ("GERARD")
+ * 2. Si NO contiene coma (ej: "FERRAN TRONCHO" o "FERRAN TRONCHO BARRERA"):
+ *    - Nombre (first name) = primera palabra ("FERRAN")
+ *    - Apellidos (last name) = segunda, tercera y siguientes palabras ("TRONCHO" o "TRONCHO BARRERA")
+ */
+function parsePlayerName(rawName) {
+  if (!rawName) return { firstName: 'Jugador', lastName: '', fullName: 'Jugador' };
+  const str = String(rawName).trim();
+  if (str.includes(',')) {
+    const parts = str.split(',');
+    const lastName = parts[0].trim();
+    const firstName = parts.slice(1).join(' ').trim();
+    const finalFirst = firstName || lastName;
+    const finalLast = firstName ? lastName : '';
+    const fullName = `${finalFirst} ${finalLast}`.trim();
+    return { firstName: finalFirst, lastName: finalLast, fullName };
+  } else {
+    const words = str.split(/\s+/).filter(Boolean);
+    if (words.length <= 1) {
+      return { firstName: str, lastName: '', fullName: str };
+    }
+    const firstName = words[0];
+    const lastName = words.slice(1).join(' ');
+    const fullName = `${firstName} ${lastName}`.trim();
+    return { firstName, lastName, fullName };
+  }
+}
+
 // Cargar .env si existe
 function loadEnv() {
   const envPath = path.join(__dirname, '..', '.env');
@@ -285,17 +317,23 @@ async function trySaveToSupabase(matches, teams, players) {
         const sourcePlayerId = String(p.ffcv_player_id || p.source_player_id || p.id || '');
         if (!sourcePlayerId) continue;
 
-        const names = (p.full_name || '').split(',');
-        const lastName = names[0] ? names[0].trim() : '';
-        const firstName = names[1] ? names[1].trim() : (p.full_name || '');
+        const { firstName, lastName } = parsePlayerName(p.full_name);
         const teamKey = (p.team || '').trim().toLowerCase();
         const teamId = teamNameToId.get(teamKey) || null;
+
+        let cleanJersey = null;
+        if (p.dorsal != null && p.dorsal !== '') {
+          const num = parseInt(p.dorsal, 10);
+          if (!isNaN(num) && num > 0 && num <= 99 && num !== p.age) {
+            cleanJersey = num;
+          }
+        }
 
         playersMap.set(sourcePlayerId, {
           first_name: firstName,
           last_name: lastName,
           position: p.position || 'Candidato',
-          jersey_number: p.dorsal ? parseInt(p.dorsal, 10) : (p.jersey_number || null),
+          jersey_number: cleanJersey,
           photo_url: p.photo_url || null,
           team_id: teamId,
           city: p.city || 'Castelló',
@@ -653,10 +691,13 @@ function getChromiumLaunchOptions(headless) {
 
                 // Si redirige a WordPress, no hay ficha pública disponible
                 if (page.url().includes('/wp')) {
+                  const parsedName = parsePlayerName(nombreJugador);
                   allPlayers.push({
                     id: `ffcv-p-${codJugador}`,
                     ffcv_player_id: codJugador,
-                    full_name: nombreJugador,
+                    full_name: parsedName.fullName,
+                    first_name: parsedName.firstName,
+                    last_name: parsedName.lastName,
                     team: nombreEquipo,
                     team_id: `ffcv-team-${codEquipo}`,
                     competition: comp.name,
@@ -686,10 +727,34 @@ function getChromiumLaunchOptions(headless) {
                     }
                   }
 
-                  // Extraer dorsal
-                  const dorsalEl = document.querySelector('.dorsal, .shirt-num, [class*="dorsal"]');
-                  const dorsalMatch = (dorsalEl?.textContent || '').match(/\d+/);
-                  const dorsal = dorsalMatch ? parseInt(dorsalMatch[0], 10) : null;
+                  // Extraer dorsal específicamente del elemento oficial .roster-card-dorsal
+                  const dorsalEl = document.querySelector('.roster-card-dorsal, .player-dorsal, .roster-dorsal');
+                  let dorsal = null;
+                  if (dorsalEl) {
+                    const dorsalText = dorsalEl.textContent.trim();
+                    const dorsalMatch = dorsalText.match(/\b([1-9][0-9]?)\b/);
+                    if (dorsalMatch) {
+                      const num = parseInt(dorsalMatch[1], 10);
+                      // Validar que sea un dorsal real (1-99) y no contenga palabras de edad
+                      if (num >= 1 && num <= 99 && !dorsalText.toLowerCase().includes('año') && !dorsalText.toLowerCase().includes('any') && !dorsalText.toLowerCase().includes('edad')) {
+                        // Si el número coincide exactamente con la edad detectada, descartar para evitar falsos positivos
+                        if (age == null || num !== age) {
+                          dorsal = num;
+                        }
+                      }
+                    }
+                  }
+
+                  // Extraer posición (ej: <span class="label">Lateral derecho</span>)
+                  const labelElements = Array.from(document.querySelectorAll('.label, span.label, .posicion, .position, .player-position, [class*="posicion"]'));
+                  let position = null;
+                  for (const el of labelElements) {
+                    const text = el.textContent.trim();
+                    if (text && text.length > 2 && text.length < 40 && !text.toLowerCase().includes('año') && !text.toLowerCase().includes('any') && !text.toLowerCase().includes('temporada') && !text.toLowerCase().includes('candidato')) {
+                      position = text.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+                      break;
+                    }
+                  }
 
                   // Extraer estadísticas de las stat-cards
                   const stats = {};
@@ -699,7 +764,7 @@ function getChromiumLaunchOptions(headless) {
                     if (lbl && val !== undefined) stats[lbl] = val;
                   });
 
-                  return { photo, age, dorsal, stats };
+                  return { photo, age, dorsal, stats, position };
                 });
 
                 // Clic en pestaña Historial para obtener tabla de trayectorias
@@ -734,11 +799,15 @@ function getChromiumLaunchOptions(headless) {
 
                 // Determinar el año infantil
                 const infantilYear = calculateInfantilYear(history, profileData.age);
+                const parsedName = parsePlayerName(nombreJugador);
 
                 const playerRecord = {
                   id: `ffcv-p-${codJugador}`,
                   ffcv_player_id: codJugador,
-                  full_name: nombreJugador,
+                  full_name: parsedName.fullName,
+                  first_name: parsedName.firstName,
+                  last_name: parsedName.lastName,
+                  position: profileData.position || 'Sense definir',
                   dorsal: profileData.dorsal,
                   age: profileData.age,
                   photo_url: profileData.photo,
@@ -754,7 +823,7 @@ function getChromiumLaunchOptions(headless) {
                 };
 
                 allPlayers.push(playerRecord);
-                process.stdout.write(`        [${playerCount}/${jugadores.length}] ${nombreJugador} -> ${infantilYear}\n`);
+                process.stdout.write(`        [${playerCount}/${jugadores.length}] ${parsedName.fullName} -> ${infantilYear}\n`);
               } catch (playerErr) {
                 console.warn(`        ⚠️ Error en jugador ${nombreJugador} (${codJugador}): ${playerErr.message.split('\n')[0]}`);
               }

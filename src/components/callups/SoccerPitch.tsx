@@ -12,13 +12,13 @@ export const SoccerPitch: React.FC<SoccerPitchProps> = ({ players, onPlayerClick
   // Agrupar jugadores por demarcación
   const porteros = players.filter((p) => p.position === 'Portero');
   const defensas = players.filter((p) =>
-    p.position?.includes('Defensa') || p.position?.includes('Lateral')
+    p.position?.includes('Defensa') || p.position?.includes('Lateral') || p.position?.includes('Carrilero')
   );
   const medios = players.filter((p) =>
     p.position?.includes('Medio') || p.position?.includes('Pivote') || p.position?.includes('Mediapunta')
   );
   const delanteros = players.filter((p) =>
-    p.position?.includes('Delantero') || p.position?.includes('Extremo')
+    p.position?.includes('Delantero') || p.position?.includes('Extremo') || p.position?.includes('Punta')
   );
 
   return (
@@ -96,7 +96,7 @@ const PlayerPin: React.FC<PlayerPinProps> = ({ player, color, onClick }) => {
       className="group flex flex-col items-center gap-1 transition-transform hover:scale-110 focus:outline-none"
     >
       <JerseyBadge
-        number={player.jersey_number || 10}
+        number={player.jersey_number}
         size="sm"
         variant="kit"
         color={color.includes('orange') || color.includes('ff6600') ? 'orange' : 'blue'}

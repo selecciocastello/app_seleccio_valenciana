@@ -132,21 +132,50 @@ async function main() {
   // 2.2 Sincronizar Jugadores
   if (rawPlayers.length > 0) {
     console.log(`\n⏳ Procesando ${rawPlayers.length} jugadores reales...`);
+    function parsePlayerName(rawName) {
+      if (!rawName) return { firstName: 'Jugador', lastName: '', fullName: 'Jugador' };
+      const str = String(rawName).trim();
+      if (str.includes(',')) {
+        const parts = str.split(',');
+        const lastName = parts[0].trim();
+        const firstName = parts.slice(1).join(' ').trim();
+        const finalFirst = firstName || lastName;
+        const finalLast = firstName ? lastName : '';
+        const fullName = `${finalFirst} ${finalLast}`.trim();
+        return { firstName: finalFirst, lastName: finalLast, fullName };
+      } else {
+        const words = str.split(/\s+/).filter(Boolean);
+        if (words.length <= 1) {
+          return { firstName: str, lastName: '', fullName: str };
+        }
+        const firstName = words[0];
+        const lastName = words.slice(1).join(' ');
+        const fullName = `${firstName} ${lastName}`.trim();
+        return { firstName, lastName, fullName };
+      }
+    }
+
     const playersMap = new Map();
     for (const p of rawPlayers) {
       const sourcePlayerId = String(p.ffcv_player_id || p.source_player_id || p.id || '');
       if (!sourcePlayerId) continue;
 
-      const names = (p.full_name || '').split(',');
-      const lastName = names[0] ? names[0].trim() : '';
-      const firstName = names[1] ? names[1].trim() : (p.full_name || '');
+      const { firstName, lastName } = parsePlayerName(p.full_name);
       const teamId = p.team ? teamNameToId.get(p.team.trim().toLowerCase()) : null;
+
+      let cleanJersey = null;
+      if (p.dorsal != null && p.dorsal !== '') {
+        const num = parseInt(p.dorsal, 10);
+        if (!isNaN(num) && num > 0 && num <= 99 && num !== p.age) {
+          cleanJersey = num;
+        }
+      }
 
       playersMap.set(sourcePlayerId, {
         first_name: firstName,
         last_name: lastName,
         position: p.position || 'Candidato',
-        jersey_number: p.dorsal ? parseInt(p.dorsal, 10) : (p.jersey_number || null),
+        jersey_number: cleanJersey,
         photo_url: p.photo_url || null,
         team_id: teamId || null,
         city: p.city || 'Castelló',

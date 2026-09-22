@@ -42,7 +42,7 @@ export const SelectedPlayers: React.FC = () => {
             <Card key={player.id} className="p-6 space-y-4" gradient>
               <div className="flex items-center justify-between">
                 <Badge status={player.status} />
-                <JerseyBadge number={player.jersey_number || 10} size="sm" variant="kit" color="blue" />
+                <JerseyBadge number={player.jersey_number} size="sm" variant="kit" color="blue" />
               </div>
 
               <div className="flex items-center gap-4">
@@ -64,7 +64,19 @@ export const SelectedPlayers: React.FC = () => {
                 <div>
                   <h3 className="text-base font-black text-white uppercase">{player.full_name}</h3>
                   <p className="text-xs text-sky-200 font-bold">{player.position}</p>
-                  <p className="text-[11px] text-slate-300 mt-0.5">{player.team?.name}</p>
+                  <div className="flex items-center gap-1 text-[11px] text-slate-300 mt-0.5">
+                    {player.team?.crest_url && (
+                      <img
+                        src={player.team.crest_url}
+                        alt={player.team.name}
+                        className="w-3.5 h-3.5 object-contain shrink-0"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    )}
+                    <span>{player.team?.name}</span>
+                  </div>
                 </div>
               </div>
 

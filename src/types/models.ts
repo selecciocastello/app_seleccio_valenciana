@@ -100,6 +100,25 @@ export interface PlayerHistoryItem {
   categoria: string;
 }
 
+export const PLAYER_POSITIONS = [
+  'Portero',
+  'Lateral Derecho',
+  'Lateral Izquierdo',
+  'Defensa Central',
+  'Carrilero Derecho',
+  'Carrilero Izquierdo',
+  'Pivote Defensivo',
+  'Mediocentro',
+  'Mediapunta',
+  'Extremo Derecho',
+  'Extremo Izquierdo',
+  'Delantero Centro',
+  'Segundo Delantero',
+  'Polivalente'
+] as const;
+
+export type PlayerPosition = (typeof PLAYER_POSITIONS)[number] | string;
+
 export interface Player {
   id: string;
   first_name: string;
@@ -108,7 +127,7 @@ export interface Player {
   birth_date?: string;
   category_id?: string;
   category?: Category;
-  position?: string;
+  position?: PlayerPosition;
   dominant_foot?: 'Diestro' | 'Zurdo' | 'Ambidextro';
   team_id?: string;
   team?: Team;
@@ -119,6 +138,13 @@ export interface Player {
   status: PlayerStatus;
   sports_data: SportsData;
   notes?: string;
+
+  // Contacto del jugador y familia/tutores
+  phone?: string;
+  email?: string;
+  guardian_name?: string;
+  guardian_phone?: string;
+  guardian_email?: string;
   
   // Categorización de edad infantil e historial
   infantil_year?: InfantilYear;

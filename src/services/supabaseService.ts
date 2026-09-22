@@ -48,7 +48,13 @@ export const supabaseService = {
         sports_data: player.sports_data || {},
         source: player.source || 'manual',
         city: player.city || 'Castelló',
-        province: player.province || 'Castelló'
+        province: player.province || 'Castelló',
+        phone: player.phone,
+        email: player.email,
+        guardian_name: player.guardian_name,
+        guardian_phone: player.guardian_phone,
+        guardian_email: player.guardian_email,
+        notes: player.notes
       };
 
       const { data, error } = await supabase

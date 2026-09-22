@@ -29,13 +29,13 @@ export const Callups: React.FC = () => {
   // Demarcaciones
   const porteros = activePlayers.filter((p) => p.position === 'Portero');
   const defensas = activePlayers.filter((p) =>
-    p.position?.includes('Defensa') || p.position?.includes('Lateral')
+    p.position?.includes('Defensa') || p.position?.includes('Lateral') || p.position?.includes('Carrilero')
   );
   const medios = activePlayers.filter((p) =>
     p.position?.includes('Medio') || p.position?.includes('Pivote') || p.position?.includes('Mediapunta')
   );
   const delanteros = activePlayers.filter((p) =>
-    p.position?.includes('Delantero') || p.position?.includes('Extremo')
+    p.position?.includes('Delantero') || p.position?.includes('Extremo') || p.position?.includes('Punta')
   );
 
   const handleCreateCallup = (e: React.FormEvent) => {

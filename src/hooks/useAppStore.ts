@@ -25,24 +25,67 @@ const PARSED_SCRAPED_TEAMS: Team[] = (scrapedTeamsData as any[]).map((t) => ({
 
 const ALL_INITIAL_TEAMS: Team[] = PARSED_SCRAPED_TEAMS;
 
+const teamsMap = new Map<string, Team>();
+PARSED_SCRAPED_TEAMS.forEach((t) => {
+  teamsMap.set(t.id, t);
+  teamsMap.set(t.name.trim().toLowerCase(), t);
+});
+
+function parsePlayerName(rawName?: string) {
+  if (!rawName) return { firstName: 'Jugador', lastName: '', fullName: 'Jugador' };
+  const str = String(rawName).trim();
+  if (str.includes(',')) {
+    const parts = str.split(',');
+    const lastName = parts[0].trim();
+    const firstName = parts.slice(1).join(' ').trim();
+    const finalFirst = firstName || lastName;
+    const finalLast = firstName ? lastName : '';
+    const fullName = `${finalFirst} ${finalLast}`.trim();
+    return { firstName: finalFirst, lastName: finalLast, fullName };
+  } else {
+    const words = str.split(/\s+/).filter(Boolean);
+    if (words.length <= 1) {
+      return { firstName: str, lastName: '', fullName: str };
+    }
+    const firstName = words[0];
+    const lastName = words.slice(1).join(' ');
+    const fullName = `${firstName} ${lastName}`.trim();
+    return { firstName, lastName, fullName };
+  }
+}
+
 const PARSED_SCRAPED_PLAYERS: Player[] = (scrapedPlayersData as any[]).map((p) => {
-  const parts = (p.full_name || '').split(',');
-  const lastName = parts[0] ? parts[0].trim() : '';
-  const firstName = parts[1] ? parts[1].trim() : (p.full_name || '');
+  const { firstName, lastName, fullName } = parsePlayerName(p.full_name);
   const calculatedYear = calculateInfantilYear(p.history, p.age, p.infantil_year);
+  const matchedTeam = teamsMap.get(p.team_id) || teamsMap.get((p.team || '').trim().toLowerCase());
   return {
     id: p.id || `player_${p.ffcv_player_id}`,
     first_name: firstName,
     last_name: lastName,
-    full_name: p.full_name,
-    team_id: p.team_id,
-    team: {
-      id: p.team_id,
-      name: p.team,
-      club: p.team,
-      city: 'Castelló'
-    },
+    full_name: fullName,
+    team_id: matchedTeam?.id || p.team_id,
+    team: matchedTeam
+      ? {
+          id: matchedTeam.id,
+          name: matchedTeam.name,
+          club: matchedTeam.club || matchedTeam.name,
+          crest_url: matchedTeam.crest_url,
+          city: matchedTeam.city || 'Castelló'
+        }
+      : {
+          id: p.team_id,
+          name: p.team,
+          club: p.team,
+          city: 'Castelló'
+        },
     jersey_number: p.dorsal || undefined,
+    position: p.position && p.position !== 'Candidato' ? p.position : undefined,
+    phone: p.phone,
+    email: p.email,
+    guardian_name: p.guardian_name,
+    guardian_phone: p.guardian_phone,
+    guardian_email: p.guardian_email,
+    notes: p.notes,
     age: p.age,
     photo_url: p.photo_url,
     infantil_year: calculatedYear,

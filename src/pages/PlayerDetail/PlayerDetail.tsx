@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import clsx from 'clsx';
 import {
@@ -19,13 +19,20 @@ import {
   Flame,
   TrendingUp,
   BarChart3,
-  ExternalLink
+  ExternalLink,
+  Phone,
+  Mail,
+  FileText,
+  Save,
+  MessageCircle,
+  UserCheck
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { useAppStore } from '../../hooks/useAppStore';
 import { useToast } from '../../contexts/ToastContext';
 import { JerseyBadge } from '../../components/ui/JerseyBadge';
+import { PLAYER_POSITIONS } from '../../types/models';
 
 export const PlayerDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -37,6 +44,30 @@ export const PlayerDetail: React.FC = () => {
   >('resumen');
 
   const player = players.find((p) => p.id === id) || players[0];
+
+  // Local state for editable fields
+  const [positionInput, setPositionInput] = useState(player?.position || '');
+  const [dominantFootInput, setDominantFootInput] = useState(player?.dominant_foot || 'Diestro');
+  const [phoneInput, setPhoneInput] = useState(player?.phone || '');
+  const [emailInput, setEmailInput] = useState(player?.email || '');
+  const [guardianNameInput, setGuardianNameInput] = useState(player?.guardian_name || '');
+  const [guardianPhoneInput, setGuardianPhoneInput] = useState(player?.guardian_phone || '');
+  const [guardianEmailInput, setGuardianEmailInput] = useState(player?.guardian_email || '');
+  const [notesInput, setNotesInput] = useState(player?.notes || '');
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (player) {
+      setPositionInput(player.position && player.position !== 'Candidato' ? player.position : '');
+      setDominantFootInput(player.dominant_foot || 'Diestro');
+      setPhoneInput(player.phone || '');
+      setEmailInput(player.email || '');
+      setGuardianNameInput(player.guardian_name || '');
+      setGuardianPhoneInput(player.guardian_phone || '');
+      setGuardianEmailInput(player.guardian_email || '');
+      setNotesInput(player.notes || '');
+    }
+  }, [player]);
 
   if (!player) {
     return (
@@ -57,6 +88,38 @@ export const PlayerDetail: React.FC = () => {
   const handleStatusChange = (newStatus: string) => {
     updatePlayer(player.id, { status: newStatus as any });
     showToast(`Estat actualitzat a "${newStatus}"`, 'success');
+  };
+
+  const handlePositionChange = (newPosition: string) => {
+    const finalPos = newPosition === 'Sense definir' ? '' : newPosition;
+    setPositionInput(finalPos);
+    updatePlayer(player.id, { position: finalPos });
+    showToast(`Posició actualitzada a "${newPosition}"`, 'success');
+  };
+
+  const handleSaveContactAndNotes = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    updatePlayer(player.id, {
+      position: positionInput === 'Sense definir' ? '' : positionInput,
+      dominant_foot: dominantFootInput as any,
+      phone: phoneInput || undefined,
+      email: emailInput || undefined,
+      guardian_name: guardianNameInput || undefined,
+      guardian_phone: guardianPhoneInput || undefined,
+      guardian_email: guardianEmailInput || undefined,
+      notes: notesInput || undefined
+    });
+
+    setTimeout(() => {
+      setIsSaving(false);
+      showToast('Dades de contacte, posició i comentaris guardats correctament', 'success');
+    }, 200);
+  };
+
+  const handleQuickSaveNotes = () => {
+    updatePlayer(player.id, { notes: notesInput });
+    showToast('Comentaris tècnics guardats correctament', 'success');
   };
 
   // Helper per extreure estadístiques oficials del scraping FFCV
@@ -81,6 +144,14 @@ export const PlayerDetail: React.FC = () => {
   const dobleGroga = getStat(['Doble amarilla', 'doble_amarilla', 'Doble groga']);
   const vermelles = getStat(['Rojas', 'rojas', 'Vermelles', 'vermelles', 'red_cards']);
   const targetaVerda = getStat(['Tarjeta verde', 'tarjeta_verde', 'Targeta verda']);
+
+  const normalizePosition = (pos?: string | null) => {
+    if (!pos || pos === 'Candidato' || pos === 'Sense definir') return 'Sense definir';
+    const match = PLAYER_POSITIONS.find((p) => p.toLowerCase() === pos.trim().toLowerCase());
+    return match || pos;
+  };
+
+  const currentPosition = normalizePosition(player.position);
 
   const prevSeason = (player.history || []).find((h) => {
     const t = (h.temporada || '').replace(/\s+/g, '');
@@ -107,13 +178,13 @@ export const PlayerDetail: React.FC = () => {
       <Card className="relative overflow-hidden bg-gradient-to-r from-[#061338] via-[#002568] to-[#003db3] text-white p-6 sm:p-8 border border-blue-900 shadow-xl" gradient>
         <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-6 relative z-10">
           <div className="flex flex-col sm:flex-row items-center sm:items-start md:items-center gap-5 text-center sm:text-left">
-            {/* Foto del Jugador y Mini Kit Dorsal */}
-            <div className="relative">
+            {/* Foto del Jugador - Neta i sense solapaments */}
+            <div className="relative shrink-0">
               {player.photo_url ? (
                 <img
                   src={player.photo_url}
                   alt={player.full_name}
-                  className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover border-2 border-white/20 shadow-2xl"
+                  className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover border-2 border-white/20 shadow-2xl bg-white/10"
                   onError={(e) => {
                     (e.target as HTMLElement).style.display = 'none';
                   }}
@@ -124,19 +195,18 @@ export const PlayerDetail: React.FC = () => {
                   {player.last_name?.[0] || 'P'}
                 </div>
               )}
-              {/* Badge Dorsal Oficial Estil Samarreta */}
-              <div className="absolute -bottom-2 -right-2 shadow-lg">
-                <JerseyBadge
-                  number={player.jersey_number || 10}
-                  size="sm"
-                  variant="kit"
-                  color="blue"
-                />
-              </div>
             </div>
 
             <div>
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
+                {player.jersey_number && (
+                  <JerseyBadge
+                    number={player.jersey_number}
+                    size="sm"
+                    variant="kit"
+                    color="blue"
+                  />
+                )}
                 <h1 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-wide">
                   {player.full_name}
                 </h1>
@@ -160,13 +230,29 @@ export const PlayerDetail: React.FC = () => {
                 )}
               </div>
 
-              <p className="text-sm font-bold text-sky-200 mt-2">
-                {player.position} <span className="text-white/40">•</span> {player.team?.name || 'Sense equip assignat'}
-              </p>
+              <div className="text-sm font-bold text-sky-200 mt-2 flex items-center justify-center sm:justify-start flex-wrap gap-2">
+                <span className="bg-sky-500/20 px-2.5 py-0.5 rounded-md border border-sky-400/30 text-white font-extrabold">
+                  {currentPosition}
+                </span>
+                <span className="text-white/40">•</span>
+                <div className="inline-flex items-center gap-1.5">
+                  {player.team?.crest_url && (
+                    <img
+                      src={player.team.crest_url}
+                      alt={player.team.name}
+                      className="w-4 h-4 object-contain inline-block"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  )}
+                  <span>{player.team?.name || 'Sense equip assignat'}</span>
+                </div>
+              </div>
 
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-xs text-slate-200 mt-2.5">
                 <JerseyBadge
-                  number={player.jersey_number || 10}
+                  number={player.jersey_number}
                   size="xs"
                   variant="pill"
                   color="white"
@@ -181,24 +267,45 @@ export const PlayerDetail: React.FC = () => {
             </div>
           </div>
 
-          {/* Selector Rápido de Estado */}
-          <div className="flex flex-col sm:flex-row items-center gap-3">
-            <div className="text-xs text-right hidden lg:block text-slate-200">
-              <span className="block text-[10px] text-sky-200 uppercase font-black tracking-wider">Estat Selecció</span>
-              <span className="font-bold">{player.status}</span>
+          {/* Selectores Rápidos de Posición y Estado */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+            {/* Selector de Posición */}
+            <div className="flex-1 sm:flex-initial">
+              <span className="block text-[10px] text-sky-200 uppercase font-black tracking-wider mb-1">
+                Posició al Camp
+              </span>
+              <select
+                value={currentPosition}
+                onChange={(e) => handlePositionChange(e.target.value)}
+                className="w-full sm:w-auto bg-[#061338]/90 border border-white/25 text-white text-xs font-bold rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#ff6600] shadow-md cursor-pointer hover:bg-[#061338]"
+              >
+                <option value="Sense definir">Sense definir</option>
+                {PLAYER_POSITIONS.map((pos) => (
+                  <option key={pos} value={pos}>
+                    {pos}
+                  </option>
+                ))}
+              </select>
             </div>
-            <select
-              value={player.status}
-              onChange={(e) => handleStatusChange(e.target.value)}
-              className="w-full sm:w-auto bg-[#061338]/90 border border-white/25 text-white text-xs font-bold rounded-xl px-4 py-2.5 focus:outline-none focus:border-[#ff6600] shadow-md cursor-pointer hover:bg-[#061338]"
-            >
-              <option value="Candidato">Estat: Candidat</option>
-              <option value="Observado">Estat: Observat</option>
-              <option value="Preseleccionado">Estat: Preseleccionat</option>
-              <option value="Seleccionado">Estat: Seleccionat</option>
-              <option value="Lesionado">Estat: Lesionat</option>
-              <option value="No seleccionado">Estat: No seleccionat</option>
-            </select>
+
+            {/* Selector de Estado */}
+            <div className="flex-1 sm:flex-initial">
+              <span className="block text-[10px] text-sky-200 uppercase font-black tracking-wider mb-1">
+                Estat Selecció
+              </span>
+              <select
+                value={player.status}
+                onChange={(e) => handleStatusChange(e.target.value)}
+                className="w-full sm:w-auto bg-[#061338]/90 border border-white/25 text-white text-xs font-bold rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#ff6600] shadow-md cursor-pointer hover:bg-[#061338]"
+              >
+                <option value="Candidato">Estat: Candidat</option>
+                <option value="Observado">Estat: Observat</option>
+                <option value="Preseleccionado">Estat: Preseleccionat</option>
+                <option value="Seleccionado">Estat: Seleccionat</option>
+                <option value="Lesionado">Estat: Lesionat</option>
+                <option value="No seleccionado">Estat: No seleccionat</option>
+              </select>
+            </div>
           </div>
         </div>
       </Card>
@@ -206,8 +313,8 @@ export const PlayerDetail: React.FC = () => {
       {/* Pestañas de Navegación */}
       <div className="flex gap-2 border-b border-slate-200 overflow-x-auto pb-1 custom-scrollbar">
         {[
-          { id: 'resumen', label: 'Resum', icon: Activity },
-          { id: 'datos', label: 'Dades Esportives', icon: Edit },
+          { id: 'resumen', label: 'Resum & Seguiment', icon: Activity },
+          { id: 'datos', label: 'Dades & Contacte', icon: Edit },
           { id: 'convocatorias', label: 'Convocatòries', icon: ShieldAlert },
           { id: 'entrenamientos', label: 'Entrenaments', icon: Dumbbell },
           { id: 'informes', label: 'Informes Tècnics', icon: FileSpreadsheet },
@@ -238,8 +345,139 @@ export const PlayerDetail: React.FC = () => {
       {/* ========================================================================= */}
       {activeTab === 'resumen' && (
         <div className="space-y-6">
+          {/* Bloc de Contacte Ràpid i Notes del Seleccionador */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Notes del Seleccionador */}
+            <Card className="p-6 space-y-4 bg-white border border-slate-200 lg:col-span-2 shadow-sm">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-[#ff6600]" />
+                  <h3 className="text-base font-black text-[#061338] uppercase tracking-wider">
+                    Comentaris i Notes de Seguiment del Jugador
+                  </h3>
+                </div>
+                <button
+                  onClick={handleQuickSaveNotes}
+                  className="px-3.5 py-1.5 bg-[#061338] hover:bg-[#002568] text-white text-xs font-bold rounded-full flex items-center gap-1.5 transition-all shadow-sm"
+                >
+                  <Save className="w-3.5 h-3.5 text-[#ff6600]" />
+                  <span>Desar Notes</span>
+                </button>
+              </div>
+
+              <div>
+                <textarea
+                  value={notesInput}
+                  onChange={(e) => setNotesInput(e.target.value)}
+                  rows={4}
+                  placeholder="Escriu ací les observacions tècniques, punts forts, caràcter competitiu, seguiment de partits o recomanacions per a futures convocatòries..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#002568] focus:bg-white transition-all font-medium leading-relaxed"
+                />
+                <p className="text-[11px] text-slate-400 mt-1.5">
+                  Aquestes notes queden guardades al perfil oficial del jugador per a consulta de tots els seleccionadors.
+                </p>
+              </div>
+            </Card>
+
+            {/* Targeta de Contacte Ràpid */}
+            <Card className="p-6 space-y-4 bg-white border border-slate-200 shadow-sm">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <Phone className="w-5 h-5 text-emerald-600" />
+                  <h3 className="text-base font-black text-[#061338] uppercase tracking-wider">
+                    Contacte
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setActiveTab('datos')}
+                  className="text-xs font-bold text-[#ff6600] hover:underline flex items-center gap-1"
+                >
+                  <Edit className="w-3.5 h-3.5" />
+                  <span>Editar</span>
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                {/* Telèfon Jugador */}
+                <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Telèfon Jugador</span>
+                    <span className="font-bold text-slate-800">{player.phone || 'Sense telèfon'}</span>
+                  </div>
+                  {player.phone && (
+                    <div className="flex items-center gap-1.5">
+                      <a
+                        href={`tel:${player.phone}`}
+                        className="p-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors"
+                        title="Trucar"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                      </a>
+                      <a
+                        href={`https://wa.me/34${player.phone.replace(/\D/g, '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg border border-green-200 transition-colors"
+                        title="WhatsApp"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
+                  )}
+                </div>
+
+                {/* Email Jugador */}
+                <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                  <div className="min-w-0 flex-1 pr-2">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Email Jugador</span>
+                    <span className="font-bold text-slate-800 truncate block">{player.email || 'Sense email'}</span>
+                  </div>
+                  {player.email && (
+                    <a
+                      href={`mailto:${player.email}`}
+                      className="p-1.5 bg-sky-50 text-sky-700 hover:bg-sky-100 rounded-lg border border-sky-200 transition-colors"
+                      title="Enviar Email"
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                </div>
+
+                {/* Tutor / Família */}
+                <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                      Tutor / Família ({player.guardian_name || 'Tutor'})
+                    </span>
+                    <span className="font-bold text-slate-800">{player.guardian_phone || 'Sense telèfon'}</span>
+                  </div>
+                  {player.guardian_phone && (
+                    <div className="flex items-center gap-1.5">
+                      <a
+                        href={`tel:${player.guardian_phone}`}
+                        className="p-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors"
+                        title="Trucar al Tutor"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                      </a>
+                      <a
+                        href={`https://wa.me/34${player.guardian_phone.replace(/\D/g, '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg border border-green-200 transition-colors"
+                        title="WhatsApp al Tutor"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Card>
+          </div>
+
           {/* Bloc d'Estadístiques Oficials FFCV (10 mètriques) */}
-          <Card className="p-6 space-y-5 bg-white border border-slate-200">
+          <Card className="p-6 space-y-5 bg-white border border-slate-200 shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <BarChart3 className="w-5 h-5 text-[#ff6600]" />
@@ -399,7 +637,7 @@ export const PlayerDetail: React.FC = () => {
           {/* Dues columnes: Perfil Tècnic + Metadades Oficials */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Informació Tècnica Ràpida */}
-            <Card className="p-6 space-y-4 bg-white border border-slate-200">
+            <Card className="p-6 space-y-4 bg-white border border-slate-200 shadow-sm">
               <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
                 <Edit className="w-5 h-5 text-[#ff6600]" />
                 <h4 className="text-base font-black text-[#061338] uppercase tracking-wider">
@@ -407,13 +645,29 @@ export const PlayerDetail: React.FC = () => {
                 </h4>
               </div>
               <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <span className="text-slate-500 block font-semibold">Club Actual:</span>
-                  <span className="text-slate-900 font-bold mt-0.5 block">{player.team?.name || 'Sense equip'}</span>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between gap-2">
+                  <div>
+                    <span className="text-slate-500 block font-semibold">Club Actual:</span>
+                    <span className="text-slate-900 font-bold mt-0.5 block">{player.team?.name || 'Sense equip'}</span>
+                  </div>
+                  {player.team?.crest_url && (
+                    <img
+                      src={player.team.crest_url}
+                      alt={player.team.name}
+                      className="w-7 h-7 object-contain shrink-0"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  )}
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <span className="text-slate-500 block font-semibold">Classificació Infantil:</span>
                   <span className="text-slate-900 font-bold mt-0.5 block">{player.infantil_year || 'Infantil'}</span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <span className="text-slate-500 block font-semibold">Posició:</span>
+                  <span className="text-slate-900 font-black mt-0.5 block">{currentPosition}</span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <span className="text-slate-500 block font-semibold">Peu Dominant:</span>
@@ -425,20 +679,18 @@ export const PlayerDetail: React.FC = () => {
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
                   <div>
-                    <span className="text-slate-500 block font-semibold">Dorsal Habitual:</span>
-                    <span className="text-slate-900 font-bold mt-0.5 block">Samarreta #{player.jersey_number || 10}</span>
+                    <span className="text-slate-500 block font-semibold">Dorsal:</span>
+                    <span className="text-slate-900 font-bold mt-0.5 block">
+                      {player.jersey_number ? `Samarreta #${player.jersey_number}` : 'Sense dorsal'}
+                    </span>
                   </div>
-                  <JerseyBadge number={player.jersey_number || 10} size="sm" variant="kit" color="blue" />
-                </div>
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <span className="text-slate-500 block font-semibold">Estat de Seguiment:</span>
-                  <span className="text-slate-900 font-bold mt-0.5 block">{player.status}</span>
+                  <JerseyBadge number={player.jersey_number} size="sm" variant="kit" color="blue" />
                 </div>
               </div>
             </Card>
 
             {/* Metadades del Scraping */}
-            <Card className="p-6 space-y-4 bg-white border border-slate-200">
+            <Card className="p-6 space-y-4 bg-white border border-slate-200 shadow-sm">
               <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
                 <Database className="w-5 h-5 text-sky-600" />
                 <h3 className="text-base font-black text-[#061338] uppercase tracking-wider">
@@ -502,75 +754,218 @@ export const PlayerDetail: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* 2. DADES ESPORTIVES TAB */}
+      {/* 2. DADES ESPORTIVES & CONTACTE TAB */}
       {/* ========================================================================= */}
       {activeTab === 'datos' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card className="p-6 space-y-4 bg-white border border-slate-200">
-              <h3 className="text-base font-black text-[#061338] uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-3">
+        <form onSubmit={handleSaveContactAndNotes} className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Edició de Fitxa Tècnica i Posició */}
+            <Card className="p-6 space-y-4 bg-white border border-slate-200 shadow-sm">
+              <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
                 <Edit className="w-5 h-5 text-[#ff6600]" />
-                <span>Fitxa Tècnica Esportiva</span>
-              </h3>
+                <h3 className="text-base font-black text-[#061338] uppercase tracking-wider">
+                  Fitxa Tècnica i Demarcació
+                </h3>
+              </div>
 
-              <div className="grid grid-cols-2 gap-4 text-xs">
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
-                  <span className="text-slate-500 font-semibold block mb-1">Posició Principal:</span>
-                  <span className="text-slate-900 font-black text-sm">{player.position}</span>
+              <div className="space-y-4 text-xs">
+                <div>
+                  <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
+                    Posició Principal al Camp *
+                  </label>
+                  <select
+                    value={positionInput || 'Sense definir'}
+                    onChange={(e) => setPositionInput(e.target.value === 'Sense definir' ? '' : e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-bold focus:outline-none focus:border-[#002568]"
+                  >
+                    <option value="Sense definir">Sense definir</option>
+                    {PLAYER_POSITIONS.map((pos) => (
+                      <option key={pos} value={pos}>
+                        {pos}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
-                  <span className="text-slate-500 font-semibold block mb-1">Peu Preferent:</span>
-                  <span className="text-slate-900 font-black text-sm">{player.dominant_foot || 'Diestro'}</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
+                      Peu Preferent
+                    </label>
+                    <select
+                      value={dominantFootInput}
+                      onChange={(e) => setDominantFootInput(e.target.value as any)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-bold focus:outline-none focus:border-[#002568]"
+                    >
+                      <option value="Diestro">Diestro</option>
+                      <option value="Zurdo">Zurdo</option>
+                      <option value="Ambidextro">Ambidextro</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
+                      Club / Equip
+                    </label>
+                    <input
+                      type="text"
+                      disabled
+                      value={player.team?.name || 'Sense equip'}
+                      className="w-full bg-slate-100 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-600 font-semibold cursor-not-allowed"
+                    />
+                  </div>
                 </div>
 
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
-                  <span className="text-slate-500 font-semibold block mb-1">Club / Equip:</span>
-                  <span className="text-slate-900 font-black text-sm">{player.team?.name || 'Sense equip'}</span>
-                </div>
-
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
-                  <span className="text-slate-500 font-semibold block mb-1">Any Infantil:</span>
-                  <span className="text-slate-900 font-black text-sm">{player.infantil_year || 'Infantil'}</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
+                      Any Infantil
+                    </label>
+                    <input
+                      type="text"
+                      disabled
+                      value={player.infantil_year || 'Infantil'}
+                      className="w-full bg-slate-100 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-600 font-semibold cursor-not-allowed"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
+                      Edat
+                    </label>
+                    <input
+                      type="text"
+                      disabled
+                      value={player.age ? `${player.age} anys` : 'N/A'}
+                      className="w-full bg-slate-100 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-600 font-semibold cursor-not-allowed"
+                    />
+                  </div>
                 </div>
               </div>
             </Card>
 
-            <Card className="p-6 space-y-4 bg-white border border-slate-200">
-              <h3 className="text-base font-black text-[#061338] uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-3">
-                <BarChart3 className="w-5 h-5 text-emerald-600" />
-                <span>Resum de Rendiment FFCV</span>
-              </h3>
+            {/* Dades de Contacte */}
+            <Card className="p-6 space-y-4 bg-white border border-slate-200 shadow-sm">
+              <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                <Phone className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-base font-black text-[#061338] uppercase tracking-wider">
+                  Dades de Contacte i Família
+                </h3>
+              </div>
 
               <div className="space-y-3 text-xs">
-                <div className="flex justify-between py-2 border-b border-slate-100">
-                  <span className="text-slate-600 font-semibold">Convocatòries Totals:</span>
-                  <span className="text-slate-900 font-black">{convocats}</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
+                      Telèfon Jugador
+                    </label>
+                    <div className="relative">
+                      <Phone className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="tel"
+                        value={phoneInput}
+                        onChange={(e) => setPhoneInput(e.target.value)}
+                        placeholder="Ex: 600 123 456"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#002568]"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
+                      Email Jugador
+                    </label>
+                    <div className="relative">
+                      <Mail className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="email"
+                        value={emailInput}
+                        onChange={(e) => setEmailInput(e.target.value)}
+                        placeholder="Ex: jugador@email.com"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#002568]"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between py-2 border-b border-slate-100">
-                  <span className="text-slate-600 font-semibold">Partits Jugats:</span>
-                  <span className="text-emerald-700 font-black">{jugats}</span>
+
+                <div>
+                  <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
+                    Nom Mare / Pare / Tutor
+                  </label>
+                  <div className="relative">
+                    <UserCheck className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={guardianNameInput}
+                      onChange={(e) => setGuardianNameInput(e.target.value)}
+                      placeholder="Ex: Joan Ribes (Pare)"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#002568]"
+                    />
+                  </div>
                 </div>
-                <div className="flex justify-between py-2 border-b border-slate-100">
-                  <span className="text-slate-600 font-semibold">Partits de Titular:</span>
-                  <span className="text-indigo-700 font-black">{titular}</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-slate-100">
-                  <span className="text-slate-600 font-semibold">Partits de Suplent:</span>
-                  <span className="text-violet-700 font-black">{suplent}</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-slate-100">
-                  <span className="text-slate-600 font-semibold">Gols Marcats:</span>
-                  <span className="text-[#ff6600] font-black">{gols}</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-slate-100">
-                  <span className="text-slate-600 font-semibold">Mitjana Gols/Partit:</span>
-                  <span className="text-cyan-700 font-black">{mediaGols}</span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
+                      Telèfon Tutor / Família
+                    </label>
+                    <div className="relative">
+                      <Phone className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="tel"
+                        value={guardianPhoneInput}
+                        onChange={(e) => setGuardianPhoneInput(e.target.value)}
+                        placeholder="Ex: 611 987 654"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#002568]"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
+                      Email Tutor / Família
+                    </label>
+                    <div className="relative">
+                      <Mail className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="email"
+                        value={guardianEmailInput}
+                        onChange={(e) => setGuardianEmailInput(e.target.value)}
+                        placeholder="Ex: familia@email.com"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#002568]"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </Card>
           </div>
-        </div>
+
+          {/* Notes i Comentaris */}
+          <Card className="p-6 space-y-4 bg-white border border-slate-200 shadow-sm">
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+              <FileText className="w-5 h-5 text-[#ff6600]" />
+              <h3 className="text-base font-black text-[#061338] uppercase tracking-wider">
+                Comentaris i Notes del Cos Tècnic
+              </h3>
+            </div>
+
+            <textarea
+              value={notesInput}
+              onChange={(e) => setNotesInput(e.target.value)}
+              rows={4}
+              placeholder="Observacions detallades sobre l'evolució, aspectes tècnics o tàctics a millorar, comportament i recomanacions per al cos de seleccionadors..."
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#002568] focus:bg-white transition-all font-medium leading-relaxed"
+            />
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="px-6 py-2.5 bg-[#ff6600] hover:bg-orange-600 text-white font-black uppercase tracking-wider text-xs rounded-full shadow-md flex items-center gap-2 transition-all cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                <span>{isSaving ? 'Guardant...' : 'Guardar Canvis del Perfil'}</span>
+              </button>
+            </div>
+          </Card>
+        </form>
       )}
 
       {/* ========================================================================= */}

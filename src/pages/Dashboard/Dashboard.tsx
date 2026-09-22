@@ -181,7 +181,9 @@ export const Dashboard: React.FC = () => {
 
                   <div className="space-y-1">
                     <p className="text-xs font-bold text-slate-600">Jugadors en seguiment</p>
-                    <p className="text-[11px] text-slate-400 font-semibold">Posició: {player.position} | Dorsal #{player.jersey_number || 10}</p>
+                    <p className="text-[11px] text-slate-400 font-semibold">
+                      Posició: {player.position} {player.jersey_number ? `| Dorsal #${player.jersey_number}` : ''}
+                    </p>
                   </div>
 
                   {/* Player Card pill internal like FFCV */}

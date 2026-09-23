@@ -184,29 +184,35 @@ export const MatchMap: React.FC = () => {
     const locationGroups = new Map<string, typeof filteredMatches>();
     filteredMatches.forEach((match) => {
       if (match.latitude && match.longitude) {
-        const key = `${match.latitude.toFixed(5)},${match.longitude.toFixed(5)}`;
+        const key = `${Number(match.latitude).toFixed(4)},${Number(match.longitude).toFixed(4)}`;
         const group = locationGroups.get(key) || [];
         group.push(match);
         locationGroups.set(key, group);
       }
     });
 
+    const bounds = L.latLngBounds([]);
+
     locationGroups.forEach((matchesAtLocation) => {
-      const [lat, lng] = matchesAtLocation[0].latitude && matchesAtLocation[0].longitude
-        ? [matchesAtLocation[0].latitude, matchesAtLocation[0].longitude]
-        : [null, null];
+      const lat = matchesAtLocation[0].latitude;
+      const lng = matchesAtLocation[0].longitude;
       if (lat == null || lng == null) return;
 
-      // Icono personalizado: escut + badges (roig = 2n any, verd = 1r any) local-vs-visitant amb la lliga
+      bounds.extend([lat, lng]);
+
+      const fieldName = matchesAtLocation[0].field_name || 'Camp Municipal';
+      const shortField = fieldName.replace(/Campo\s*\d+|F-11|Castellón|Vila-real|Campo\s*[A-Z]/gi, '').trim().slice(0, 18);
+
+      // Icono personalizado: escut + badges (roig = 2n any, verd = 1r any)
       const crestHtml = (crestUrl: string | undefined, teamName: string | undefined) => {
         const breakdown = teamName ? getTeamPlayersBreakdown(teamName) : { secondYear: 0, firstYear: 0 };
         const badge = (count: number, color: string) =>
           count > 0
-            ? `<span style="position:absolute; ${color === '#dc2626' ? 'top:-5px; right:-5px;' : 'bottom:-5px; right:-5px;'} background:${color}; color:#fff; font-size:8px; font-weight:900; min-width:13px; height:13px; padding:0 2px; border-radius:999px; display:flex; align-items:center; justify-content:center; border:1px solid #fff; line-height:1;">${count}</span>`
+            ? `<span style="position:absolute; ${color === '#dc2626' ? 'top:-4px; right:-4px;' : 'bottom:-4px; right:-4px;'} background:${color}; color:#fff; font-size:8px; font-weight:900; min-width:12px; height:12px; padding:0 2px; border-radius:999px; display:flex; align-items:center; justify-content:center; border:1px solid #fff; line-height:1; box-shadow:0 1px 2px rgba(0,0,0,0.4);">${count}</span>`
             : '';
         return `
           <div style="position:relative; width:22px; height:22px; flex-shrink:0;">
-            <div style="width:22px;height:22px;border-radius:50%;background:#fff;border:1.5px solid #061338;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+            <div style="width:22px;height:22px;border-radius:50%;background:#fff;border:1.5px solid #061338;display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.2);">
               ${crestUrl ? `<img src="${crestUrl}" style="width:16px;height:16px;object-fit:contain;" />` : `<span style="font-size:10px;">⚽</span>`}
             </div>
             ${badge(breakdown.secondYear, '#dc2626')}
@@ -215,33 +221,47 @@ export const MatchMap: React.FC = () => {
         `;
       };
 
-      const rowsHtml = matchesAtLocation
-        .map((match) => {
-          const homeCrest = match.home_crest || match.home_team?.crest_url;
-          const awayCrest = match.away_crest || match.away_team?.crest_url;
-          const league = `${match.competition_name || 'Lliga'}${match.group_name ? ` · ${match.group_name}` : ''}`;
-          return `
-            <div style="display:flex; flex-direction:column; align-items:center; gap:1px;">
-              <div style="display:flex; align-items:center; gap:5px; background:#fff; border-radius:999px; padding:3px 4px; box-shadow:0 2px 6px rgba(0,0,0,0.35); border:1.5px solid #ff6600;">
-                ${crestHtml(homeCrest, match.home_team_name || match.home_team?.name)}
-                <span style="font-size:8px; font-weight:900; color:#94a3b8;">vs</span>
-                ${crestHtml(awayCrest, match.away_team_name || match.away_team?.name)}
-              </div>
-              <span style="font-size:7px; font-weight:800; color:#061338; background:#fff; padding:0px 4px; border-radius:6px; max-width:95px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,0.25);">${league}</span>
+      let markerHtml = '';
+
+      if (matchesAtLocation.length === 1) {
+        const match = matchesAtLocation[0];
+        const homeCrest = match.home_crest || match.home_team?.crest_url;
+        const awayCrest = match.away_crest || match.away_team?.crest_url;
+        const time = getMatchTime(match);
+        markerHtml = `
+          <div style="display:flex; align-items:center; gap:4px; background:#fff; border-radius:999px; padding:3px 6px; box-shadow:0 3px 10px rgba(0,0,0,0.3); border:2px solid #ff6600; cursor:pointer; transform:translate(-50%, -50%); transition:transform 0.15s ease;" class="hover:scale-105">
+            ${crestHtml(homeCrest, match.home_team_name || match.home_team?.name)}
+            <span style="font-size:8.5px; font-weight:900; color:#64748b; margin:0 1px;">vs</span>
+            ${crestHtml(awayCrest, match.away_team_name || match.away_team?.name)}
+            ${time ? `<span style="font-size:8px; font-weight:900; background:#061338; color:#fff; padding:1px 4px; border-radius:999px; margin-left:2px;">${time}h</span>` : ''}
+          </div>
+        `;
+      } else {
+        // Multi-partit al mateix camp: marcador compacte i elegant amb comptador
+        const count = matchesAtLocation.length;
+        const firstMatch = matchesAtLocation[0];
+        const homeCrest = firstMatch.home_crest || firstMatch.home_team?.crest_url;
+        const awayCrest = firstMatch.away_crest || firstMatch.away_team?.crest_url;
+        markerHtml = `
+          <div style="display:flex; align-items:center; gap:6px; background:#061338; color:#fff; border-radius:999px; padding:3px 8px 3px 5px; box-shadow:0 4px 12px rgba(6,19,56,0.5); border:2px solid #ff6600; cursor:pointer; transform:translate(-50%, -50%); transition:transform 0.15s ease;" class="hover:scale-105">
+            <div style="display:flex; align-items:center; gap:-6px;">
+              ${homeCrest ? `<img src="${homeCrest}" style="width:18px;height:18px;object-fit:contain;border-radius:50%;background:#fff;padding:1px;" />` : ''}
+              ${awayCrest ? `<img src="${awayCrest}" style="width:18px;height:18px;object-fit:contain;border-radius:50%;background:#fff;padding:1px;margin-left:-4px;" />` : ''}
             </div>
-          `;
-        })
-        .join('');
+            <div style="display:flex; flex-direction:column; line-height:1.1;">
+              <span style="font-size:8.5px; font-weight:800; color:#f8fafc; max-width:90px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${shortField || 'Camp'}</span>
+            </div>
+            <span style="background:#ff6600; color:#fff; font-size:9px; font-weight:900; padding:1px 6px; border-radius:999px; margin-left:2px; box-shadow:0 1px 3px rgba(0,0,0,0.3);">${count} partits</span>
+          </div>
+        `;
+      }
 
       const icon = L.divIcon({
         className: 'custom-crest-marker',
-        html: `
-          <div style="display:flex; flex-direction:column; gap:4px; align-items:center;">
-            ${rowsHtml}
-          </div>
-        `,
-        iconAnchor: [26, matchesAtLocation.length > 1 ? (matchesAtLocation.length * 36) / 2 : 18],
-        popupAnchor: [0, matchesAtLocation.length > 1 ? -((matchesAtLocation.length * 36) / 2) : -18]
+        html: markerHtml,
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
+        popupAnchor: [0, -18]
       });
 
       const marker = L.marker([lat, lng], { icon }).addTo(map);
@@ -317,6 +337,10 @@ export const MatchMap: React.FC = () => {
 
       marker.bindPopup(popupEl);
     });
+
+    if (bounds.isValid() && locationGroups.size > 0) {
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 13 });
+    }
 
     return () => {
       viewRef.current = { center: [map.getCenter().lat, map.getCenter().lng], zoom: map.getZoom() };

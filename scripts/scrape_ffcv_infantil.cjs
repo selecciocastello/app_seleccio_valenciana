@@ -626,7 +626,7 @@ async function scrapePlayerWithRetry(page, playerUrl, maxRetries = 2) {
             // Obtener partidos de la jornada
             const partidosData = await page.evaluate(async ({ codGrupo, codJor }) => {
               try {
-                const res = await fetch(`https://ffcv.es/competiciones/api/partidos/resultados_por_grupo_jornada_data.php?cod_grupo=${encodeURIComponent(codGrupo)}&jornada=${encodeURIComponent(codJor)}`);
+                const res = await fetch(`https://ffcv.es/competiciones/api/partidos/resultados_por_grupo_jornada_data.php?cod_grupo=${encodeURIComponent(codGrupo)}&cod_jornada=${encodeURIComponent(codJor)}`);
                 return await res.json();
               } catch (e) {
                 return { error: e.message };

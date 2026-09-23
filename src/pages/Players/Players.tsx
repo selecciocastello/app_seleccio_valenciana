@@ -18,6 +18,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useAppStore } from '../../hooks/useAppStore';
 import { useToast } from '../../contexts/ToastContext';
 import { JerseyBadge } from '../../components/ui/JerseyBadge';
+import { CustomSelect } from '../../components/ui/Select';
 import { PLAYER_POSITIONS, type Player, type PlayerStatus } from '../../types/models';
 
 type SortField = 'name' | 'matches' | 'goals';
@@ -249,8 +250,8 @@ export const Players: React.FC = () => {
       </div>
 
       {/* Buscador y Filtros */}
-      <Card className="p-4 bg-white space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2.5">
+      <Card className="p-4 sm:p-5 bg-white space-y-4 shadow-sm border border-slate-200/80 rounded-2xl">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
           {/* Buscador */}
           <div className="relative sm:col-span-2 md:col-span-3 lg:col-span-4 xl:col-span-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -259,105 +260,84 @@ export const Players: React.FC = () => {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t.searchPlaceholder}
-              className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-10 pr-4 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#002568]"
+              className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#002568] focus:ring-2 focus:ring-[#002568]/15 transition-all shadow-xs"
             />
           </div>
 
           {/* Filtro Año Infantil */}
-          <select
+          <CustomSelect
             value={selectedInfantilYear}
-            onChange={(e) => setSelectedInfantilYear(e.target.value)}
-            className="bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#002568]"
-          >
-            <option value="all">Tots els Anys (Infantil)</option>
-            <option value="Infantil 1er año">Infantil 1er any</option>
-            <option value="Infantil 2º año">Infantil 2n any</option>
-            <option value="Desconocido">Desconegut</option>
-          </select>
+            onChange={setSelectedInfantilYear}
+            options={[
+              { value: 'all', label: 'Tots els Anys' },
+              { value: 'Infantil 1er año', label: 'Infantil 1er any' },
+              { value: 'Infantil 2º año', label: 'Infantil 2n any' },
+              { value: 'Desconocido', label: 'Desconegut' },
+            ]}
+          />
 
-          {/* Filtro Posición (Totes les posicions) */}
-          <select
+          {/* Filtro Posición */}
+          <CustomSelect
             value={selectedPosition}
-            onChange={(e) => setSelectedPosition(e.target.value)}
-            className={clsx(
-              "border rounded-2xl px-3 py-2 text-xs font-bold focus:outline-none",
-              selectedPosition !== 'all'
-                ? "bg-sky-50 border-sky-300 text-[#002568]"
-                : "bg-slate-50 border-slate-200 text-slate-800 focus:border-[#002568]"
-            )}
-          >
-            <option value="all">Posició: Totes</option>
-            <option value="unassigned">Sense definir</option>
-            {PLAYER_POSITIONS.map((pos) => (
-              <option key={pos} value={pos}>
-                {pos}
-              </option>
-            ))}
-          </select>
+            onChange={setSelectedPosition}
+            options={[
+              { value: 'all', label: 'Posició: Totes' },
+              { value: 'unassigned', label: 'Sense definir' },
+              ...PLAYER_POSITIONS.map((pos) => ({ value: pos, label: pos })),
+            ]}
+          />
 
           {/* Filtro Estado */}
-          <select
+          <CustomSelect
             value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value)}
-            className="bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#002568]"
-          >
-            <option value="all">Tots els Estats</option>
-            <option value="Candidato">Candidat</option>
-            <option value="Observado">Observat</option>
-            <option value="Preseleccionado">Preseleccionat</option>
-            <option value="Seleccionado">Seleccionat</option>
-            <option value="Lesionado">Lesionat</option>
-          </select>
+            onChange={setSelectedStatus}
+            options={[
+              { value: 'all', label: 'Tots els Estats' },
+              { value: 'Candidato', label: 'Candidat' },
+              { value: 'Observado', label: 'Observat' },
+              { value: 'Preseleccionado', label: 'Preseleccionat' },
+              { value: 'Seleccionado', label: 'Seleccionat' },
+              { value: 'Lesionado', label: 'Lesionat' },
+            ]}
+          />
 
-          {/* Filtro Equipo */}
-          <select
+          {/* Filtro Equipo (con buscador integrado) */}
+          <CustomSelect
             value={selectedTeam}
-            onChange={(e) => setSelectedTeam(e.target.value)}
-            className="bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#002568]"
-          >
-            <option value="all">Tots els Equips</option>
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
+            onChange={setSelectedTeam}
+            searchable={true}
+            searchPlaceholder="Cercar equip..."
+            options={[
+              { value: 'all', label: 'Tots els Equips' },
+              ...teams.map((t) => ({ value: t.id, label: t.name })),
+            ]}
+          />
 
           {/* Filtro Partidos Jugados */}
-          <select
+          <CustomSelect
             value={selectedMatchesFilter}
-            onChange={(e) => setSelectedMatchesFilter(e.target.value)}
-            className={clsx(
-              "border rounded-2xl px-3 py-2 text-xs font-bold focus:outline-none",
-              selectedMatchesFilter !== 'all'
-                ? "bg-sky-50 border-sky-300 text-[#002568]"
-                : "bg-slate-50 border-slate-200 text-slate-800 focus:border-[#002568]"
-            )}
-          >
-            <option value="all">Partits: Tots</option>
-            <option value="with_matches">Amb partits (≥ 1 PJ)</option>
-            <option value="min_3">Més de 3 partits (≥ 3 PJ)</option>
-            <option value="min_5">Més de 5 partits (≥ 5 PJ)</option>
-            <option value="no_matches">Sense partits (0 PJ)</option>
-          </select>
+            onChange={setSelectedMatchesFilter}
+            options={[
+              { value: 'all', label: 'Partits: Tots' },
+              { value: 'with_matches', label: 'Amb partits (≥ 1 PJ)' },
+              { value: 'min_3', label: 'Més de 3 (≥ 3 PJ)' },
+              { value: 'min_5', label: 'Més de 5 (≥ 5 PJ)' },
+              { value: 'no_matches', label: 'Sense partits (0 PJ)' },
+            ]}
+          />
 
           {/* Filtro Goles */}
-          <select
+          <CustomSelect
             value={selectedGoalsFilter}
-            onChange={(e) => setSelectedGoalsFilter(e.target.value)}
-            className={clsx(
-              "border rounded-2xl px-3 py-2 text-xs font-bold focus:outline-none",
-              selectedGoalsFilter !== 'all'
-                ? "bg-emerald-50 border-emerald-300 text-emerald-800"
-                : "bg-slate-50 border-slate-200 text-slate-800 focus:border-[#002568]"
-            )}
-          >
-            <option value="all">Gols: Tots</option>
-            <option value="with_goals">Amb gols (≥ 1 gol)</option>
-            <option value="min_3">Golejadors (≥ 3 gols)</option>
-            <option value="min_5">Top golejadors (≥ 5 gols)</option>
-            <option value="no_goals">Sense gols (0)</option>
-          </select>
+            onChange={setSelectedGoalsFilter}
+            options={[
+              { value: 'all', label: 'Gols: Tots' },
+              { value: 'with_goals', label: 'Amb gols (≥ 1 gol)' },
+              { value: 'min_3', label: 'Golejadors (≥ 3 gols)' },
+              { value: 'min_5', label: 'Top golejadors (≥ 5 gols)' },
+              { value: 'no_goals', label: 'Sense gols (0)' },
+            ]}
+          />
         </div>
 
         {hasActiveFilters && (
@@ -767,32 +747,22 @@ export const Players: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Posició al Camp</label>
-              <select
+              <CustomSelect
+                label="Posició al Camp"
                 value={position}
-                onChange={(e) => setPosition(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2 text-xs text-slate-900 font-bold"
-              >
-                {PLAYER_POSITIONS.map((pos) => (
-                  <option key={pos} value={pos}>
-                    {pos}
-                  </option>
-                ))}
-              </select>
+                onChange={setPosition}
+                options={PLAYER_POSITIONS.map((pos) => ({ value: pos, label: pos }))}
+              />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Equip</label>
-              <select
+              <CustomSelect
+                label="Equip"
                 value={teamId}
-                onChange={(e) => setTeamId(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2 text-xs text-slate-900 font-bold"
-              >
-                {teams.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setTeamId}
+                searchable={teams.length > 5}
+                searchPlaceholder="Cercar equip..."
+                options={teams.map((t) => ({ value: t.id, label: t.name }))}
+              />
             </div>
           </div>
 
@@ -804,7 +774,7 @@ export const Players: React.FC = () => {
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="600 123 456"
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2 text-xs text-slate-900"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900"
               />
             </div>
             <div>
@@ -814,7 +784,7 @@ export const Players: React.FC = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="jugador@email.com"
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2 text-xs text-slate-900"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900"
               />
             </div>
           </div>
@@ -827,7 +797,7 @@ export const Players: React.FC = () => {
                 value={guardianName}
                 onChange={(e) => setGuardianName(e.target.value)}
                 placeholder="Ex: Pare o Mare"
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2 text-xs text-slate-900"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900"
               />
             </div>
             <div>
@@ -837,23 +807,23 @@ export const Players: React.FC = () => {
                 value={guardianPhone}
                 onChange={(e) => setGuardianPhone(e.target.value)}
                 placeholder="611 987 654"
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2 text-xs text-slate-900"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">Estat Inicial</label>
-            <select
+            <CustomSelect
+              label="Estat Inicial"
               value={status}
-              onChange={(e) => setStatus(e.target.value as PlayerStatus)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2 text-xs text-slate-900 font-bold"
-            >
-              <option value="Candidato">Candidat</option>
-              <option value="Observado">Observat</option>
-              <option value="Preseleccionado">Preseleccionat</option>
-              <option value="Seleccionado">Seleccionat</option>
-            </select>
+              onChange={(val) => setStatus(val as PlayerStatus)}
+              options={[
+                { value: 'Candidato', label: 'Candidat' },
+                { value: 'Observado', label: 'Observat' },
+                { value: 'Preseleccionado', label: 'Preseleccionat' },
+                { value: 'Seleccionado', label: 'Seleccionat' },
+              ]}
+            />
           </div>
 
           <div>

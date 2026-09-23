@@ -34,18 +34,10 @@ try {
   }
 }
 
-// Configuración de competiciones solicitadas
+// Configuración de competiciones solicitadas: Preferente, 1ª Regional y 2ª Regional
 const TARGET_TEMPORADA = '22'; // 2026-2027
-const CASTELLON_AUTONOMICA_CODES = ['17274', '17230', '17781', '18000']; // Villarreal 'A', Castellón 'A', Primer Toque 'A', Roda 'A'
 
 const TARGET_COMPETITIONS = [
-  {
-    id: '905431905',
-    name: 'Lliga Autonòmica Infantil',
-    groups: [
-      { id: '905431906', name: 'Grup - Únic' }
-    ]
-  },
   {
     id: '905431907',
     name: 'Lliga Preferent Infantil',
@@ -385,6 +377,140 @@ function getChromiumLaunchOptions(headless) {
   return options;
 }
 
+async function scrapePlayerWithRetry(page, playerUrl, maxRetries = 2) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await page.evaluate(url => { window.location.href = url; }, playerUrl);
+      await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 });
+
+      // Si redirige a WordPress, re-establecer sesión
+      if (page.url().includes('/wp')) {
+        if (attempt < maxRetries) {
+          console.warn(`        ⚠️ Intento ${attempt}: Redirección a /wp. Re-estableciendo sesión...`);
+          await page.goto('https://ffcv.es/competiciones/#partidos', { waitUntil: 'domcontentloaded', timeout: 20000 });
+          await page.evaluate(() => {
+            try { sessionStorage.setItem('ffcv_entry_ok', '1'); } catch(e) {}
+          });
+          await page.waitForTimeout(1000);
+          continue;
+        } else {
+          return { profileData: {}, history: [], isWp: true };
+        }
+      }
+
+      // Esperar dinámicamente a que aparezcan los elementos de la ficha del jugador en el DOM
+      await page.waitForSelector('img.player-photo, .stat-card, .player-name, .label, .roster-card-dorsal', { timeout: 6000 }).catch(() => null);
+      await page.waitForTimeout(200);
+
+      // Extraer foto, dorsal, edad, posición y estadísticas
+      const profileData = await page.evaluate(() => {
+        const photoImg = document.querySelector('img.player-photo');
+        const photo = photoImg ? photoImg.src : null;
+
+        // Extraer edad de texto: "12 años", "13 años", "12 anys", etc.
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        let node;
+        let age = null;
+        while ((node = walker.nextNode())) {
+          const m = node.nodeValue.match(/(\d+)\s*años?/i) || node.nodeValue.match(/(\d+)\s*anys?/i);
+          if (m) {
+            age = parseInt(m[1], 10);
+            break;
+          }
+        }
+
+        // Extraer dorsal específicamente del elemento oficial .roster-card-dorsal
+        const dorsalEl = document.querySelector('.roster-card-dorsal, .player-dorsal, .roster-dorsal');
+        let dorsal = null;
+        if (dorsalEl) {
+          const dorsalText = dorsalEl.textContent.trim();
+          const dorsalMatch = dorsalText.match(/\b([1-9][0-9]?)\b/);
+          if (dorsalMatch) {
+            const num = parseInt(dorsalMatch[1], 10);
+            if (num >= 1 && num <= 99 && !dorsalText.toLowerCase().includes('año') && !dorsalText.toLowerCase().includes('any') && !dorsalText.toLowerCase().includes('edad')) {
+              if (age == null || num !== age) {
+                dorsal = num;
+              }
+            }
+          }
+        }
+
+        // Extraer posición (ej: <span class="label">Lateral derecho</span>)
+        const labelElements = Array.from(document.querySelectorAll('.label, span.label, .posicion, .position, .player-position, [class*="posicion"]'));
+        let position = null;
+        for (const el of labelElements) {
+          const text = el.textContent.trim();
+          if (text && text.length > 2 && text.length < 40 && !text.toLowerCase().includes('año') && !text.toLowerCase().includes('any') && !text.toLowerCase().includes('temporada') && !text.toLowerCase().includes('candidato')) {
+            position = text.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+            break;
+          }
+        }
+
+        // Extraer estadísticas de las stat-cards
+        const stats = {};
+        document.querySelectorAll('.stat-card').forEach(card => {
+          const val = card.querySelector('.stat-val')?.textContent?.trim();
+          const lbl = card.querySelector('.stat-lbl')?.textContent?.trim();
+          if (lbl && val !== undefined) stats[lbl] = val;
+        });
+
+        return { photo, age, dorsal, stats, position };
+      });
+
+      // Clic en pestaña Historial para obtener tabla de trayectorias
+      let history = [];
+      try {
+        const histTab = page.locator('a.match-tab[href="#history"], [href*="history"]').first();
+        if (await histTab.isVisible({ timeout: 2000 })) {
+          await histTab.click();
+          await page.waitForSelector('#history table tbody tr, table tbody tr', { timeout: 3000 }).catch(() => null);
+          await page.waitForTimeout(200);
+
+          history = await page.evaluate(() => {
+            const rows = Array.from(document.querySelectorAll('#history table tbody tr, table tbody tr'));
+            return rows.map(r => {
+              const cells = r.querySelectorAll('td');
+              if (cells.length < 4) return null;
+              const temporada = cells[0]?.textContent?.trim();
+              const escudo = cells[1]?.querySelector('img')?.src || null;
+              const equipo = cells[2]?.textContent?.trim();
+              const categoria = cells[3]?.textContent?.trim();
+              return {
+                temporada,
+                escudo_url: escudo && !escudo.includes('escudo_generico') ? escudo : null,
+                equipo,
+                categoria
+              };
+            }).filter(h => h && h.temporada && h.equipo);
+          });
+        }
+      } catch (histErr) {}
+
+      // Si obtuvimos foto, edad o historial, o ya es el último intento, devolvemos resultado
+      if (profileData.photo || profileData.age != null || history.length > 0 || attempt >= maxRetries) {
+        return { profileData, history, isWp: false };
+      }
+
+      console.warn(`        ⚠️ Intento ${attempt}: Datos incompletos. Reintentando...`);
+      await page.waitForTimeout(600);
+    } catch (err) {
+      if (attempt >= maxRetries) {
+        console.warn(`        ⚠️ Error definitivo jugador: ${err.message.split('\n')[0]}`);
+        return { profileData: {}, history: [], isWp: false };
+      }
+      console.warn(`        ⚠️ Error intento ${attempt}: ${err.message.split('\n')[0]}. Reintentando...`);
+      try {
+        await page.goto('https://ffcv.es/competiciones/#partidos', { waitUntil: 'domcontentloaded', timeout: 15000 });
+        await page.evaluate(() => {
+          try { sessionStorage.setItem('ffcv_entry_ok', '1'); } catch(e) {}
+        });
+      } catch(e) {}
+      await page.waitForTimeout(1000);
+    }
+  }
+  return { profileData: {}, history: [], isWp: false };
+}
+
 (async () => {
   console.log('=====================================================');
   console.log('⚽ SCRAPER FFCV INFANTIL - PARTIDOS, JUGADORES E HISTORIAL');
@@ -393,9 +519,13 @@ function getChromiumLaunchOptions(headless) {
 
   const launchOpts = getChromiumLaunchOptions(headless);
   const browser = await chromium.launch(launchOpts);
-  const page = await browser.newPage({
-    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+  const context = await browser.newContext({
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    extraHTTPHeaders: {
+      'Referer': 'https://ffcv.es/competiciones/#partidos'
+    }
   });
+  const page = await context.newPage();
 
   const fieldsCache = new Map(); // codcampo -> info campo (coordenadas, dirección, etc.)
   const allMatches = [];
@@ -405,6 +535,9 @@ function getChromiumLaunchOptions(headless) {
   try {
     console.log('\n🌐 Conectando con FFCV...');
     await page.goto('https://ffcv.es/competiciones/#partidos', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.evaluate(() => {
+      try { sessionStorage.setItem('ffcv_entry_ok', '1'); } catch(e) {}
+    });
 
     // Aceptar cookies
     try {
@@ -617,10 +750,6 @@ function getChromiumLaunchOptions(headless) {
             ? classifData.clasificacion
             : (Array.isArray(classifData?.clasificaciones) ? classifData.clasificaciones : []);
 
-          if (comp.id === '905431905') {
-            equipos = equipos.filter(eq => CASTELLON_AUTONOMICA_CODES.includes(String(eq.codequipo)));
-          }
-
           console.log(`     ${equipos.length} equipos en el grupo.`);
 
           let teamCount = 0;
@@ -683,21 +812,20 @@ function getChromiumLaunchOptions(headless) {
               const nombreJugador = j.nombre;
               const playerUrl = `https://ffcv.es/competiciones/jugadores/jugador.php?codigo=${encodeURIComponent(codJugador)}&cod_competicion=${encodeURIComponent(comp.id)}&cod_grupo=${encodeURIComponent(grp.id)}&cod_temporada=${encodeURIComponent(TARGET_TEMPORADA)}`;
 
-              // Cargar página de la ficha del jugador para extraer foto, edad, estadísticas e historial
+              // Cargar página de la ficha del jugador con auto-reintento y esperas dinámicas
               try {
-                await page.evaluate(url => { window.location.href = url; }, playerUrl);
-                await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 25000 });
-                await page.waitForTimeout(1200);
+                const { profileData, history, isWp } = await scrapePlayerWithRetry(page, playerUrl, 2);
 
-                // Si redirige a WordPress, no hay ficha pública disponible
-                if (page.url().includes('/wp')) {
-                  const parsedName = parsePlayerName(nombreJugador);
+                const parsedName = parsePlayerName(nombreJugador);
+
+                if (isWp) {
                   allPlayers.push({
                     id: `ffcv-p-${codJugador}`,
                     ffcv_player_id: codJugador,
                     full_name: parsedName.fullName,
                     first_name: parsedName.firstName,
                     last_name: parsedName.lastName,
+                    position: 'Sense definir',
                     team: nombreEquipo,
                     team_id: `ffcv-team-${codEquipo}`,
                     competition: comp.name,
@@ -705,101 +833,15 @@ function getChromiumLaunchOptions(headless) {
                     infantil_year: 'Desconocido',
                     history: [],
                     sports_data: {},
-                    source_url: playerUrl
+                    source_url: playerUrl,
+                    scraped_at: new Date().toISOString()
                   });
+                  process.stdout.write(`        [${playerCount}/${jugadores.length}] ${parsedName.fullName} -> Ficha privada/no disponible\n`);
                   continue;
                 }
 
-                // Extraer foto, dorsal, edad y estadísticas
-                const profileData = await page.evaluate(() => {
-                  const photoImg = document.querySelector('img.player-photo');
-                  const photo = photoImg ? photoImg.src : null;
-
-                  // Extraer edad de texto: "12 años", "13 años"
-                  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-                  let node;
-                  let age = null;
-                  while ((node = walker.nextNode())) {
-                    const m = node.nodeValue.match(/(\d+)\s*años?/i);
-                    if (m) {
-                      age = parseInt(m[1], 10);
-                      break;
-                    }
-                  }
-
-                  // Extraer dorsal específicamente del elemento oficial .roster-card-dorsal
-                  const dorsalEl = document.querySelector('.roster-card-dorsal, .player-dorsal, .roster-dorsal');
-                  let dorsal = null;
-                  if (dorsalEl) {
-                    const dorsalText = dorsalEl.textContent.trim();
-                    const dorsalMatch = dorsalText.match(/\b([1-9][0-9]?)\b/);
-                    if (dorsalMatch) {
-                      const num = parseInt(dorsalMatch[1], 10);
-                      // Validar que sea un dorsal real (1-99) y no contenga palabras de edad
-                      if (num >= 1 && num <= 99 && !dorsalText.toLowerCase().includes('año') && !dorsalText.toLowerCase().includes('any') && !dorsalText.toLowerCase().includes('edad')) {
-                        // Si el número coincide exactamente con la edad detectada, descartar para evitar falsos positivos
-                        if (age == null || num !== age) {
-                          dorsal = num;
-                        }
-                      }
-                    }
-                  }
-
-                  // Extraer posición (ej: <span class="label">Lateral derecho</span>)
-                  const labelElements = Array.from(document.querySelectorAll('.label, span.label, .posicion, .position, .player-position, [class*="posicion"]'));
-                  let position = null;
-                  for (const el of labelElements) {
-                    const text = el.textContent.trim();
-                    if (text && text.length > 2 && text.length < 40 && !text.toLowerCase().includes('año') && !text.toLowerCase().includes('any') && !text.toLowerCase().includes('temporada') && !text.toLowerCase().includes('candidato')) {
-                      position = text.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-                      break;
-                    }
-                  }
-
-                  // Extraer estadísticas de las stat-cards
-                  const stats = {};
-                  document.querySelectorAll('.stat-card').forEach(card => {
-                    const val = card.querySelector('.stat-val')?.textContent?.trim();
-                    const lbl = card.querySelector('.stat-lbl')?.textContent?.trim();
-                    if (lbl && val !== undefined) stats[lbl] = val;
-                  });
-
-                  return { photo, age, dorsal, stats, position };
-                });
-
-                // Clic en pestaña Historial para obtener tabla de trayectorias
-                let history = [];
-                try {
-                  const histTab = page.locator('a.match-tab[href="#history"], [href*="history"]').first();
-                  if (await histTab.isVisible({ timeout: 2000 })) {
-                    await histTab.click();
-                    await page.waitForTimeout(1000);
-
-                    history = await page.evaluate(() => {
-                      const rows = Array.from(document.querySelectorAll('#history table tbody tr, table tbody tr'));
-                      return rows.map(r => {
-                        const cells = r.querySelectorAll('td');
-                        if (cells.length < 4) return null;
-                        const temporada = cells[0]?.textContent?.trim();
-                        const escudo = cells[1]?.querySelector('img')?.src || null;
-                        const equipo = cells[2]?.textContent?.trim();
-                        const categoria = cells[3]?.textContent?.trim();
-                        return {
-                          temporada,
-                          escudo_url: escudo && !escudo.includes('escudo_generico') ? escudo : null,
-                          equipo,
-                          categoria
-                        };
-                      }).filter(h => h && h.temporada && h.equipo);
-                    });
-                  }
-                } catch (histErr) {
-                  // Sin historial disponible
-                }
-
                 // Determinar el año infantil
-                const infantilYear = calculateInfantilYear(history, profileData.age);
-                const parsedName = parsePlayerName(nombreJugador);
+                const infantilYear = calculateInfantilYear(history, profileData?.age);
 
                 const playerRecord = {
                   id: `ffcv-p-${codJugador}`,
@@ -807,17 +849,17 @@ function getChromiumLaunchOptions(headless) {
                   full_name: parsedName.fullName,
                   first_name: parsedName.firstName,
                   last_name: parsedName.lastName,
-                  position: profileData.position || 'Sense definir',
-                  dorsal: profileData.dorsal,
-                  age: profileData.age,
-                  photo_url: profileData.photo,
+                  position: profileData?.position || 'Sense definir',
+                  dorsal: profileData?.dorsal || null,
+                  age: profileData?.age || null,
+                  photo_url: profileData?.photo || null,
                   team: nombreEquipo,
                   team_id: `ffcv-team-${codEquipo}`,
                   competition: comp.name,
                   group: grp.name,
                   infantil_year: infantilYear,
-                  history,
-                  sports_data: profileData.stats,
+                  history: history || [],
+                  sports_data: profileData?.stats || {},
                   source_url: playerUrl,
                   scraped_at: new Date().toISOString()
                 };

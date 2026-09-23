@@ -14,6 +14,7 @@ import {
 import { Link } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
+import { CustomSelect } from '../../components/ui/Select';
 import { useAppStore } from '../../hooks/useAppStore';
 
 export const Dashboard: React.FC = () => {
@@ -63,46 +64,35 @@ export const Dashboard: React.FC = () => {
       </div>
 
       {/* 2. Filtros de Selección Estilo FFCV (Temporada, Modalidad, Competición, Grupo) */}
-      <Card className="p-4 md:p-6 bg-white space-y-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div>
-            <label className="block text-[11px] font-black uppercase text-slate-700 mb-1 tracking-wider">
-              TEMPORADA
-            </label>
-            <select className="w-full bg-white border border-slate-200 rounded-2xl px-3 py-2 text-xs font-bold text-slate-800 shadow-sm focus:border-[#002568] focus:outline-none">
-              <option>2026-2027</option>
-              <option>2025-2026</option>
-            </select>
-          </div>
+      <Card className="p-4 sm:p-5 md:p-6 bg-white border border-slate-200/80 rounded-2xl shadow-sm space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <CustomSelect
+            label="TEMPORADA"
+            value="2026-2027"
+            onChange={() => {}}
+            options={['2026-2027', '2025-2026']}
+          />
 
-          <div>
-            <label className="block text-[11px] font-black uppercase text-slate-700 mb-1 tracking-wider">
-              MODALIDAD
-            </label>
-            <select className="w-full bg-white border border-slate-200 rounded-2xl px-3 py-2 text-xs font-bold text-slate-800 shadow-sm focus:border-[#002568] focus:outline-none">
-              <option>MASCULÍ F11</option>
-              <option>FEMENÍ F11</option>
-            </select>
-          </div>
+          <CustomSelect
+            label="MODALIDAD"
+            value="MASCULÍ F11"
+            onChange={() => {}}
+            options={['MASCULÍ F11', 'FEMENÍ F11']}
+          />
 
-          <div>
-            <label className="block text-[11px] font-black uppercase text-slate-700 mb-1 tracking-wider">
-              COMPETICIÓ
-            </label>
-            <select className="w-full bg-white border border-slate-200 rounded-2xl px-3 py-2 text-xs font-bold text-slate-800 shadow-sm focus:border-[#002568] focus:outline-none">
-              <option>Primera FFCV Sub-16</option>
-              <option>Preferent Sub-14</option>
-            </select>
-          </div>
+          <CustomSelect
+            label="COMPETICIÓ"
+            value="Primera FFCV Sub-16"
+            onChange={() => {}}
+            options={['Primera FFCV Sub-16', 'Preferent Sub-14']}
+          />
 
-          <div>
-            <label className="block text-[11px] font-black uppercase text-slate-700 mb-1 tracking-wider">
-              GRUPO
-            </label>
-            <select className="w-full bg-white border border-slate-200 rounded-2xl px-3 py-2 text-xs font-bold text-slate-800 shadow-sm focus:border-[#002568] focus:outline-none">
-              <option>Grup - 1 (Castelló)</option>
-            </select>
-          </div>
+          <CustomSelect
+            label="GRUPO"
+            value="Grup - 1 (Castelló)"
+            onChange={() => {}}
+            options={['Grup - 1 (Castelló)']}
+          />
         </div>
 
         {/* Date Selector Pills (Idénticos a FFCV) */}

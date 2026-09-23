@@ -181,6 +181,7 @@ export interface Match {
   category_id?: string;
   matchday?: string;
   match_date: string;
+  match_time?: string;
   time?: string;
   home_position?: string;
   home_points?: string | number;

@@ -28,7 +28,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Lista inicial de usuarios predeterminados
+// Lista inicial de usuarios predeterminados oficiales
 const INITIAL_USERS: Profile[] = [
   {
     id: '00000000-0000-0000-0000-000000000001',
@@ -42,25 +42,14 @@ const INITIAL_USERS: Profile[] = [
   },
   {
     id: '00000000-0000-0000-0000-000000000002',
-    email: 'seleccionador@selecciocastello.val',
+    email: 'victorzandalinas@selecciocastello.val',
     password: 'castello.2026',
-    full_name: 'Vicent Ribes',
-    category_assigned: 'Sub-16',
-    role: { id: 'r2', name: 'seleccionador', description: 'Seleccionador Sub-16' },
+    full_name: 'Víctor Zandalinas',
+    category_assigned: 'Infantil',
+    role: { id: 'r2', name: 'seleccionador', description: 'Seleccionador Infantil FFCV' },
     is_active: true,
     created_at: new Date().toISOString(),
     last_login: new Date().toLocaleDateString('es-ES') + ' 10:15h'
-  },
-  {
-    id: '00000000-0000-0000-0000-000000000003',
-    email: 'cbeltran@selecciocastello.val',
-    password: 'castello.2026',
-    full_name: 'Carles Beltrán',
-    category_assigned: 'Sub-14',
-    role: { id: 'r2', name: 'seleccionador', description: 'Seleccionador Sub-14' },
-    is_active: true,
-    created_at: new Date().toISOString(),
-    last_login: new Date().toLocaleDateString('es-ES') + ' 18:22h'
   }
 ];
 
@@ -80,15 +69,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return INITIAL_USERS;
     }
     try {
-      const parsed = JSON.parse(savedUsers);
-      // Garantizar que el admin principal existe
-      const hasAdmin = parsed.some((u: Profile) => u.email === 'seleccio.castello.2026@gmail.com');
-      if (!hasAdmin) {
-        const updated = [INITIAL_USERS[0], ...parsed];
-        localStorage.setItem('app_users_db', JSON.stringify(updated));
-        return updated;
+      const parsed: Profile[] = JSON.parse(savedUsers);
+      // Filtrar usuarios de prueba antiguos ("Vicent Ribes", "Carles Beltrán", "Marc Soler")
+      const cleaned = parsed.filter(
+        (u) =>
+          u.full_name !== 'Vicent Ribes' &&
+          u.full_name !== 'Carles Beltrán' &&
+          u.full_name !== 'Marc Soler'
+      );
+      // Asegurar que Administrador y Víctor Zandalinas están presentes
+      if (!cleaned.some((u) => u.email === 'seleccio.castello.2026@gmail.com')) {
+        cleaned.unshift(INITIAL_USERS[0]);
       }
-      return parsed;
+      if (!cleaned.some((u) => u.full_name.toLowerCase().includes('zandalinas'))) {
+        cleaned.push(INITIAL_USERS[1]);
+      }
+      localStorage.setItem('app_users_db', JSON.stringify(cleaned));
+      return cleaned;
     } catch {
       return INITIAL_USERS;
     }

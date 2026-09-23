@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
+import { CustomSelect } from '../../components/ui/Select';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAppStore } from '../../hooks/useAppStore';
 import { useToast } from '../../contexts/ToastContext';
@@ -117,18 +118,18 @@ export const Reports: React.FC = () => {
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Crear Nou Informe Tècnic">
         <form onSubmit={handleCreateReport} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Seleccionar Jugador</label>
-            <select
+            <CustomSelect
+              theme="dark"
+              label="Seleccionar Jugador"
               value={selectedPlayerId}
-              onChange={(e) => setSelectedPlayerId(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
-            >
-              {players.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.full_name} ({p.position} - {p.team?.name})
-                </option>
-              ))}
-            </select>
+              onChange={setSelectedPlayerId}
+              searchable={players.length > 5}
+              searchPlaceholder="Cercar jugador..."
+              options={players.map((p) => ({
+                value: p.id,
+                label: `${p.full_name} (${p.position} - ${p.team?.name || 'Sense equip'})`,
+              }))}
+            />
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -210,16 +211,17 @@ export const Reports: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Recomanació Interna</label>
-            <select
+            <CustomSelect
+              theme="dark"
+              label="Recomanació Interna"
               value={recommendation}
-              onChange={(e) => setRecommendation(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
-            >
-              <option value="Preseleccionable">Preseleccionable</option>
-              <option value="En observación">En observació contínua</option>
-              <option value="Descartado">No prioritari actualment</option>
-            </select>
+              onChange={setRecommendation}
+              options={[
+                { value: 'Preseleccionable', label: 'Preseleccionable' },
+                { value: 'En observación', label: 'En observació contínua' },
+                { value: 'Descartado', label: 'No prioritari actualment' },
+              ]}
+            />
           </div>
 
           <div className="pt-4 flex justify-end gap-3">

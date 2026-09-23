@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
+import { CustomSelect } from '../../components/ui/Select';
 import { useAppStore } from '../../hooks/useAppStore';
 import { useToast } from '../../contexts/ToastContext';
 import { JerseyBadge } from '../../components/ui/JerseyBadge';
@@ -270,41 +271,39 @@ export const PlayerDetail: React.FC = () => {
           {/* Selectores Rápidos de Posición y Estado */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
             {/* Selector de Posición */}
-            <div className="flex-1 sm:flex-initial">
+            <div className="flex-1 sm:min-w-[170px]">
               <span className="block text-[10px] text-sky-200 uppercase font-black tracking-wider mb-1">
                 Posició al Camp
               </span>
-              <select
+              <CustomSelect
+                theme="dark"
                 value={currentPosition}
-                onChange={(e) => handlePositionChange(e.target.value)}
-                className="w-full sm:w-auto bg-[#061338]/90 border border-white/25 text-white text-xs font-bold rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#ff6600] shadow-md cursor-pointer hover:bg-[#061338]"
-              >
-                <option value="Sense definir">Sense definir</option>
-                {PLAYER_POSITIONS.map((pos) => (
-                  <option key={pos} value={pos}>
-                    {pos}
-                  </option>
-                ))}
-              </select>
+                onChange={handlePositionChange}
+                options={[
+                  { value: 'Sense definir', label: 'Sense definir' },
+                  ...PLAYER_POSITIONS.map((pos) => ({ value: pos, label: pos })),
+                ]}
+              />
             </div>
 
             {/* Selector de Estado */}
-            <div className="flex-1 sm:flex-initial">
+            <div className="flex-1 sm:min-w-[180px]">
               <span className="block text-[10px] text-sky-200 uppercase font-black tracking-wider mb-1">
                 Estat Selecció
               </span>
-              <select
+              <CustomSelect
+                theme="dark"
                 value={player.status}
-                onChange={(e) => handleStatusChange(e.target.value)}
-                className="w-full sm:w-auto bg-[#061338]/90 border border-white/25 text-white text-xs font-bold rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-[#ff6600] shadow-md cursor-pointer hover:bg-[#061338]"
-              >
-                <option value="Candidato">Estat: Candidat</option>
-                <option value="Observado">Estat: Observat</option>
-                <option value="Preseleccionado">Estat: Preseleccionat</option>
-                <option value="Seleccionado">Estat: Seleccionat</option>
-                <option value="Lesionado">Estat: Lesionat</option>
-                <option value="No seleccionado">Estat: No seleccionat</option>
-              </select>
+                onChange={handleStatusChange}
+                options={[
+                  { value: 'Candidato', label: 'Estat: Candidat' },
+                  { value: 'Observado', label: 'Estat: Observat' },
+                  { value: 'Preseleccionado', label: 'Estat: Preseleccionat' },
+                  { value: 'Seleccionado', label: 'Estat: Seleccionat' },
+                  { value: 'Lesionado', label: 'Estat: Lesionat' },
+                  { value: 'No seleccionado', label: 'Estat: No seleccionat' },
+                ]}
+              />
             </div>
           </div>
         </div>
@@ -768,39 +767,31 @@ export const PlayerDetail: React.FC = () => {
                 </h3>
               </div>
 
-              <div className="space-y-4 text-xs">
+              <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
-                    Posició Principal al Camp *
-                  </label>
-                  <select
+                  <CustomSelect
+                    label="Posició Principal al Camp *"
                     value={positionInput || 'Sense definir'}
-                    onChange={(e) => setPositionInput(e.target.value === 'Sense definir' ? '' : e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-bold focus:outline-none focus:border-[#002568]"
-                  >
-                    <option value="Sense definir">Sense definir</option>
-                    {PLAYER_POSITIONS.map((pos) => (
-                      <option key={pos} value={pos}>
-                        {pos}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setPositionInput(val === 'Sense definir' ? '' : val)}
+                    options={[
+                      { value: 'Sense definir', label: 'Sense definir' },
+                      ...PLAYER_POSITIONS.map((pos) => ({ value: pos, label: pos })),
+                    ]}
+                  />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
-                      Peu Preferent
-                    </label>
-                    <select
+                    <CustomSelect
+                      label="Peu Preferent"
                       value={dominantFootInput}
-                      onChange={(e) => setDominantFootInput(e.target.value as any)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-bold focus:outline-none focus:border-[#002568]"
-                    >
-                      <option value="Diestro">Diestro</option>
-                      <option value="Zurdo">Zurdo</option>
-                      <option value="Ambidextro">Ambidextro</option>
-                    </select>
+                      onChange={(val) => setDominantFootInput(val as any)}
+                      options={[
+                        { value: 'Diestro', label: 'Diestro' },
+                        { value: 'Zurdo', label: 'Zurdo' },
+                        { value: 'Ambidextro', label: 'Ambidextro' },
+                      ]}
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
@@ -1273,7 +1264,7 @@ export const PlayerDetail: React.FC = () => {
                 <div className="space-y-1">
                   <span className="text-xs font-black text-[#ff6600]">15/10/2026 • Infantil Castelló</span>
                   <h4 className="text-sm font-black text-[#061338]">I Convocatòria Selecció Castelló</h4>
-                  <p className="text-xs font-semibold text-slate-500">Seleccionador: Vicent Ribes</p>
+                  <p className="text-xs font-semibold text-slate-500">Seleccionador: Víctor Zandalinas</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-5 h-5 text-emerald-600" />

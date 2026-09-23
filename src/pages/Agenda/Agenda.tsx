@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useAppStore } from '../../hooks/useAppStore';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -14,9 +14,16 @@ import {
   Check,
   X,
   FileText,
-  Shield
+  Shield,
+  Trophy,
+  Star,
+  AlertTriangle,
+  Users,
+  ChevronRight
 } from 'lucide-react';
-import type { ScoutingAgendaItem } from '../../types/models';
+import { JerseyBadge } from '../../components/ui/JerseyBadge';
+import { CustomSelect } from '../../components/ui/Select';
+import type { ScoutingAgendaItem, Player } from '../../types/models';
 
 export const Agenda: React.FC = () => {
   const { user } = useAuth();
@@ -29,7 +36,8 @@ export const Agenda: React.FC = () => {
     removeFromAgenda,
     markMatchAsObserved,
     getTeamObservationCount,
-    getTeamPlayersBreakdown
+    getTeamPlayersBreakdown,
+    updatePlayer
   } = useAppStore();
 
   const [activeTab, setActiveTab] = useState<'my_agenda' | 'browse'>('my_agenda');
@@ -39,6 +47,15 @@ export const Agenda: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [matchdayFilter, setMatchdayFilter] = useState('all');
 
+  // Modal de Jugadores / Plantilla del Partido
+  const [selectedMatchRosterItem, setSelectedMatchRosterItem] = useState<ScoutingAgendaItem | null>(null);
+  const [rosterTab, setRosterTab] = useState<'all' | 'home' | 'away'>('all');
+  const [rosterSearch, setRosterSearch] = useState('');
+  const [playerNotesEdit, setPlayerNotesEdit] = useState<Record<string, string>>({});
+
+  // Modal de Confirmación de Borrado
+  const [confirmDeleteItem, setConfirmDeleteItem] = useState<ScoutingAgendaItem | null>(null);
+
   // Estado para el modal de Marcar como Observado
   const [observingItem, setObservingItem] = useState<ScoutingAgendaItem | null>(null);
   const [observeNotes, setObserveNotes] = useState('');
@@ -47,14 +64,29 @@ export const Agenda: React.FC = () => {
   const [standoutSelected, setStandoutSelected] = useState<string[]>([]);
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
-  // Lista única de seleccionadores que tienen partidos en la agenda
+  // Preseleccionar / Desmarcar Jugador
+  const handleTogglePreselected = useCallback((player: Player, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const newStatus = player.status === 'Preseleccionado' ? 'Candidato' : 'Preseleccionado';
+    updatePlayer(player.id, { status: newStatus });
+    setSuccessToast(
+      newStatus === 'Preseleccionado'
+        ? `⭐ ${player.full_name} afegit a PRESELECCIONATS!`
+        : `${player.full_name} desmarcat de preseleccionats`
+    );
+    setTimeout(() => setSuccessToast(null), 3000);
+  }, [updatePlayer]);
+
+  // Guardar nota de jugador
+  const handlePlayerNoteChange = useCallback((playerId: string, note: string) => {
+    setPlayerNotesEdit((prev) => ({ ...prev, [playerId]: note }));
+    updatePlayer(playerId, { notes: note });
+  }, [updatePlayer]);
+
+  // Lista única de seleccionadors oficials (Víctor Zandalinas i Administrador)
   const selectorsList = useMemo(() => {
-    const set = new Set<string>();
-    agenda.forEach((a) => {
-      if (a.selector_name) set.add(a.selector_name);
-    });
-    return Array.from(set);
-  }, [agenda]);
+    return ['Víctor Zandalinas', 'Administrador FFCV Castelló'];
+  }, []);
 
   // Lista de categorías únicas para el explorador
   const categoriesList = useMemo(() => {
@@ -284,32 +316,30 @@ export const Agenda: React.FC = () => {
         </div>
 
         {activeTab === 'my_agenda' && (
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
             {/* Filtro Estado */}
-            <select
+            <CustomSelect
+              theme="dark"
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="w-full sm:w-auto bg-slate-900 border border-slate-800 text-xs text-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#ff6600]"
-            >
-              <option value="all">Tots els estats</option>
-              <option value="Planificat">Només Planificats ({agendaStats.planned})</option>
-              <option value="Observat">Només Observats ({agendaStats.observed})</option>
-            </select>
+              onChange={(val) => setStatusFilter(val as any)}
+              options={[
+                { value: 'all', label: 'Tots els estats' },
+                { value: 'Planificat', label: `Només Planificats (${agendaStats.planned})` },
+                { value: 'Observat', label: `Només Observats (${agendaStats.observed})` },
+              ]}
+            />
 
             {/* Filtro Seleccionador */}
             {selectorsList.length > 1 && (
-              <select
+              <CustomSelect
+                theme="dark"
                 value={selectorFilter}
-                onChange={(e) => setSelectorFilter(e.target.value)}
-                className="w-full sm:w-auto bg-slate-900 border border-slate-800 text-xs text-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#ff6600]"
-              >
-                <option value="all">Tots els tècnics</option>
-                {selectorsList.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
+                onChange={setSelectorFilter}
+                options={[
+                  { value: 'all', label: 'Tots els tècnics' },
+                  ...selectorsList.map((s) => ({ value: s, label: s })),
+                ]}
+              />
             )}
           </div>
         )}
@@ -341,11 +371,18 @@ export const Agenda: React.FC = () => {
                 const awayBreakdown = getTeamPlayersBreakdown(item.away_team_name);
                 const localObsCount = getTeamObservationCount(item.home_team_name);
                 const awayObsCount = getTeamObservationCount(item.away_team_name);
+                const localPreselected = localBreakdown.playersList.filter((p) => p.status === 'Preseleccionado').length;
+                const awayPreselected = awayBreakdown.playersList.filter((p) => p.status === 'Preseleccionado').length;
 
                 return (
                   <div
                     key={item.id}
-                    className={`rounded-xl p-5 border transition-all shadow-md flex flex-col justify-between ${
+                    onClick={() => {
+                      setSelectedMatchRosterItem(item);
+                      setRosterTab('all');
+                      setRosterSearch('');
+                    }}
+                    className={`rounded-xl p-5 border transition-all shadow-md flex flex-col justify-between cursor-pointer group hover:border-sky-500/60 hover:shadow-xl ${
                       isObserved
                         ? 'bg-slate-900/90 border-emerald-900/50 hover:border-emerald-700/60'
                         : 'bg-slate-900/90 border-slate-800 hover:border-slate-700'
@@ -354,7 +391,7 @@ export const Agenda: React.FC = () => {
                     <div>
                       {/* Cabecera de la Tarjeta */}
                       <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-800">
-                        <div className="flex items-center gap-2 text-xs">
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
                           <span
                             className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${
                               isObserved
@@ -373,18 +410,27 @@ export const Agenda: React.FC = () => {
                             )}
                           </span>
 
+                          <span className="text-sky-400 font-bold text-[11px] flex items-center gap-1">
+                            <Trophy className="w-3 h-3 text-sky-400" />
+                            <span>{item.match?.competition_name || 'Lliga FFCV'}{item.match?.group_name ? ` · ${item.match.group_name}` : ''}</span>
+                          </span>
+
                           <span className="text-slate-400 text-[11px]">
-                            {item.selector_name}
+                            ({item.selector_name})
                           </span>
                         </div>
 
-                        {/* Botón borrar de la agenda */}
+                        {/* Botón borrar de la agenda con confirmación */}
                         <button
-                          onClick={() => removeFromAgenda(item.id)}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmDeleteItem(item);
+                          }}
                           title="Treure de l'agenda"
-                          className="p-1 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-rose-500/10 transition-colors"
+                          className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-rose-500/10 transition-colors"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
 
@@ -393,15 +439,23 @@ export const Agenda: React.FC = () => {
                         <div className="flex items-center justify-between gap-3">
                           {/* Local */}
                           <div className="flex-1 text-left min-w-0">
-                            <h4 className="text-sm font-black text-white line-clamp-2 break-words">
+                            <h4 className="text-sm font-black text-white break-words group-hover:text-sky-300 transition-colors">
                               {item.home_team_name}
                             </h4>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-[10px] text-indigo-300 font-semibold">
-                                {localBreakdown.secondYear} de 2n
+                            <div className="flex flex-wrap items-center gap-2 mt-1">
+                              <span className="text-[10px] text-emerald-300 font-semibold">
+                                🟢 {localBreakdown.firstYear} (1r)
                               </span>
+                              <span className="text-[10px] text-indigo-300 font-semibold">
+                                🔵 {localBreakdown.secondYear} (2n)
+                              </span>
+                              {localPreselected > 0 && (
+                                <span className="text-[10px] text-amber-300 font-bold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
+                                  ⭐ {localPreselected}
+                                </span>
+                              )}
                               <span className="text-[10px] text-slate-500">·</span>
-                              <span className="text-[10px] text-amber-300 font-semibold">
+                              <span className="text-[10px] text-slate-400 font-semibold">
                                 👁️ {localObsCount}v
                               </span>
                             </div>
@@ -413,15 +467,23 @@ export const Agenda: React.FC = () => {
 
                           {/* Visitante */}
                           <div className="flex-1 text-right min-w-0">
-                            <h4 className="text-sm font-black text-white line-clamp-2 break-words">
+                            <h4 className="text-sm font-black text-white break-words group-hover:text-sky-300 transition-colors">
                               {item.away_team_name}
                             </h4>
-                            <div className="flex items-center justify-end gap-2 mt-1">
-                              <span className="text-[10px] text-indigo-300 font-semibold">
-                                {awayBreakdown.secondYear} de 2n
+                            <div className="flex flex-wrap items-center justify-end gap-2 mt-1">
+                              <span className="text-[10px] text-emerald-300 font-semibold">
+                                🟢 {awayBreakdown.firstYear} (1r)
                               </span>
+                              <span className="text-[10px] text-indigo-300 font-semibold">
+                                🔵 {awayBreakdown.secondYear} (2n)
+                              </span>
+                              {awayPreselected > 0 && (
+                                <span className="text-[10px] text-amber-300 font-bold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
+                                  ⭐ {awayPreselected}
+                                </span>
+                              )}
                               <span className="text-[10px] text-slate-500">·</span>
-                              <span className="text-[10px] text-amber-300 font-semibold">
+                              <span className="text-[10px] text-slate-400 font-semibold">
                                 👁️ {awayObsCount}v
                               </span>
                             </div>
@@ -430,11 +492,16 @@ export const Agenda: React.FC = () => {
 
                         {/* Fecha, Hora y Campo */}
                         <div className="bg-slate-950/60 rounded-lg p-2.5 text-xs text-slate-300 space-y-1">
-                          <div className="flex items-center gap-1.5 font-bold text-sky-200">
-                            <Clock className="w-3.5 h-3.5 text-sky-400" />
-                            <span>
-                              {item.scheduled_date ? item.scheduled_date.slice(0, 10) : 'Data per definir'}
-                              {item.match?.time ? ` · ${item.match.time}h` : ''}
+                          <div className="flex items-center justify-between gap-1.5 font-bold text-sky-200">
+                            <div className="flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5 text-sky-400" />
+                              <span>
+                                {item.scheduled_date ? item.scheduled_date.slice(0, 10) : 'Data per definir'}
+                                {item.match?.time ? ` · ${item.match.time}h` : ''}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-bold text-sky-400 group-hover:underline flex items-center gap-0.5">
+                              Veure Plantilles i Informes <ChevronRight className="w-3 h-3" />
                             </span>
                           </div>
 
@@ -465,7 +532,11 @@ export const Agenda: React.FC = () => {
                     <div className="pt-3 border-t border-slate-800">
                       {!isObserved ? (
                         <button
-                          onClick={() => handleOpenObserveModal(item)}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenObserveModal(item);
+                          }}
                           className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-colors flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/30"
                         >
                           <CheckCircle2 className="w-4 h-4" />
@@ -474,11 +545,15 @@ export const Agenda: React.FC = () => {
                       ) : (
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
-                            <Check className="w-3.5 h-3.5" /> Completat el{' '}
+                            <Check className="w-3.5 h-3.5" /> Observació completada el{' '}
                             {item.observed_at ? item.observed_at.slice(0, 10) : 'recentment'}
                           </span>
                           <button
-                            onClick={() => handleOpenObserveModal(item)}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenObserveModal(item);
+                            }}
                             className="text-xs text-sky-400 hover:underline font-bold"
                           >
                             Editar Notes
@@ -498,7 +573,7 @@ export const Agenda: React.FC = () => {
       {activeTab === 'browse' && (
         <div className="space-y-4">
           {/* Barra de Filtros del Explorador */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between shadow-xl">
             <div className="relative flex-1">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
@@ -506,36 +581,34 @@ export const Agenda: React.FC = () => {
                 placeholder="Cercar per equip, camp, municipi..."
                 value={searchBrowse}
                 onChange={(e) => setSearchBrowse(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#ff6600]"
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm font-semibold text-white placeholder-slate-500 focus:outline-none focus:border-[#ff6600] focus:ring-1 focus:ring-[#ff6600]/30 transition-all"
               />
             </div>
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-              <select
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <CustomSelect
+                theme="dark"
                 value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="w-full sm:w-auto bg-slate-950 border border-slate-800 text-xs text-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#ff6600]"
-              >
-                <option value="all">Totes les categories</option>
-                {categoriesList.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-              </select>
+                onChange={setCategoryFilter}
+                searchable={categoriesList.length > 5}
+                searchPlaceholder="Cercar categoria..."
+                options={[
+                  { value: 'all', label: 'Totes les categories' },
+                  ...categoriesList.map((cat) => ({ value: cat, label: cat })),
+                ]}
+              />
 
-              <select
+              <CustomSelect
+                theme="dark"
                 value={matchdayFilter}
-                onChange={(e) => setMatchdayFilter(e.target.value)}
-                className="w-full sm:w-auto bg-slate-950 border border-slate-800 text-xs text-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#ff6600]"
-              >
-                <option value="all">Totes les jornades</option>
-                {matchdaysList.map((j) => (
-                  <option key={j} value={j}>
-                    {j}
-                  </option>
-                ))}
-              </select>
+                onChange={setMatchdayFilter}
+                searchable={matchdaysList.length > 8}
+                searchPlaceholder="Cercar jornada..."
+                options={[
+                  { value: 'all', label: 'Totes les jornades' },
+                  ...matchdaysList.map((j) => ({ value: j, label: j })),
+                ]}
+              />
             </div>
           </div>
 
@@ -559,20 +632,20 @@ export const Agenda: React.FC = () => {
                   <div>
                     {/* Header: Jornada y Competición */}
                     <div className="flex items-center justify-between text-[11px] text-slate-400 pb-2 border-b border-slate-800">
-                      <span className="font-bold text-sky-300">
-                        {match.matchday || 'Partit'} · {match.competition_name || 'Infantil'}
+                      <span className="font-bold text-sky-300 flex items-center gap-1.5">
+                        <Trophy className="w-3.5 h-3.5 text-sky-400" />
+                        <span>{match.competition_name || 'Lliga FFCV'}{match.group_name ? ` · ${match.group_name}` : ''} {match.matchday ? `· ${match.matchday}` : ''}</span>
                       </span>
                       <span className="flex items-center gap-1 text-slate-400">
                         <Clock className="w-3 h-3 text-slate-500" />
-                        {match.match_date ? match.match_date.slice(0, 10) : ''}
-                        {match.time ? ` · ${match.time}` : ''}
+                        <span>{match.match_date ? match.match_date.slice(0, 10) : ''}{match.time ? ` · ${match.time}` : ''}</span>
                       </span>
                     </div>
 
                     {/* Equipos */}
                     <div className="py-3 flex items-center justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-black text-white line-clamp-2 break-words">
+                        <p className="text-xs font-black text-white break-words">
                           {match.home_team_name}
                         </p>
                         <p className="text-[10px] text-slate-400">
@@ -585,7 +658,7 @@ export const Agenda: React.FC = () => {
                       </span>
 
                       <div className="flex-1 min-w-0 text-right">
-                        <p className="text-xs font-black text-white line-clamp-2 break-words">
+                        <p className="text-xs font-black text-white break-words">
                           {match.away_team_name}
                         </p>
                         <p className="text-[10px] text-slate-400">
@@ -615,7 +688,8 @@ export const Agenda: React.FC = () => {
                           <Check className="w-3.5 h-3.5" /> A la teua agenda
                         </span>
                         <button
-                          onClick={() => removeFromAgenda(agendaItem!.id)}
+                          type="button"
+                          onClick={() => setConfirmDeleteItem(agendaItem!)}
                           className="text-[11px] text-rose-400 hover:underline font-bold"
                         >
                           Treure
@@ -623,6 +697,7 @@ export const Agenda: React.FC = () => {
                       </div>
                     ) : (
                       <button
+                        type="button"
                         onClick={() => {
                           addToAgenda(match, currentSelectorName);
                           setSuccessToast(`Afegit a l'agenda: ${match.home_team_name} vs ${match.away_team_name}`);
@@ -638,6 +713,358 @@ export const Agenda: React.FC = () => {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL DE PLANTILLAS / SCOUTING DE PARTIDO AL CLICKAR ────────────── */}
+      {selectedMatchRosterItem && (() => {
+        const homeBD = getTeamPlayersBreakdown(selectedMatchRosterItem.home_team_name);
+        const awayBD = getTeamPlayersBreakdown(selectedMatchRosterItem.away_team_name);
+
+        let activePlayers: Player[] = [];
+        if (rosterTab === 'home') activePlayers = homeBD.playersList;
+        else if (rosterTab === 'away') activePlayers = awayBD.playersList;
+        else activePlayers = [...homeBD.playersList, ...awayBD.playersList];
+
+        if (rosterSearch.trim()) {
+          const q = rosterSearch.toLowerCase().trim();
+          activePlayers = activePlayers.filter(
+            (p) =>
+              p.full_name.toLowerCase().includes(q) ||
+              (p.position || '').toLowerCase().includes(q) ||
+              (p.jersey_number && String(p.jersey_number).includes(q)) ||
+              (p.team?.name || '').toLowerCase().includes(q)
+          );
+        }
+
+        const homePreselectedCount = homeBD.playersList.filter((p) => p.status === 'Preseleccionado').length;
+        const awayPreselectedCount = awayBD.playersList.filter((p) => p.status === 'Preseleccionado').length;
+
+        return (
+          <div
+            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 animate-fade-in"
+            onClick={() => setSelectedMatchRosterItem(null)}
+          >
+            <div
+              className="bg-slate-950 border border-slate-800 rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header del Modal */}
+              <div className="p-5 border-b border-slate-800 bg-slate-900/90 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="bg-sky-500/15 text-sky-300 border border-sky-500/30 px-2.5 py-0.5 rounded-lg text-xs font-black uppercase flex items-center gap-1.5">
+                      <Trophy className="w-3.5 h-3.5 text-sky-400" />
+                      <span>{selectedMatchRosterItem.match?.competition_name || 'Lliga FFCV'}{selectedMatchRosterItem.match?.group_name ? ` · ${selectedMatchRosterItem.match.group_name}` : ''}</span>
+                    </span>
+                    <span className="text-xs font-bold text-slate-400">
+                      {selectedMatchRosterItem.match?.matchday || 'Partit FFCV'}
+                    </span>
+                  </div>
+
+                  <h2 className="text-lg sm:text-xl font-black text-white flex items-center gap-2">
+                    <span>{selectedMatchRosterItem.home_team_name}</span>
+                    <span className="text-slate-500 font-normal">vs</span>
+                    <span>{selectedMatchRosterItem.away_team_name}</span>
+                  </h2>
+
+                  <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 font-semibold">
+                    <span>📅 {selectedMatchRosterItem.scheduled_date ? selectedMatchRosterItem.scheduled_date.slice(0, 10) : 'Data per definir'}</span>
+                    <span>🕒 {selectedMatchRosterItem.match?.time ? `${selectedMatchRosterItem.match.time} h` : ''}</span>
+                    <span>📍 {selectedMatchRosterItem.match?.field_name || 'Camp FFCV'}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-end sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const item = selectedMatchRosterItem;
+                      setSelectedMatchRosterItem(null);
+                      handleOpenObserveModal(item);
+                    }}
+                    className="px-3.5 py-2 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 shadow-lg shadow-emerald-950/40"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{selectedMatchRosterItem.status === 'Observat' ? 'Editar Observació' : 'Marcar Observat'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMatchRosterItem(null)}
+                    className="p-2 text-slate-400 hover:text-white rounded-xl bg-slate-900 border border-slate-800"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Barra de Filtro y Pestañas de Equipos */}
+              <div className="p-4 bg-slate-900/60 border-b border-slate-800/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0">
+                {/* Pestañas de Equipos */}
+                <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setRosterTab('all')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      rosterTab === 'all'
+                        ? 'bg-sky-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Tots ({homeBD.total + awayBD.total})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setRosterTab('home')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      rosterTab === 'home'
+                        ? 'bg-sky-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <span>{selectedMatchRosterItem.home_team_name.split(' ')[0]} ({homeBD.total})</span>
+                    {homePreselectedCount > 0 && (
+                      <span className="bg-amber-500 text-slate-950 text-[10px] px-1 rounded-full font-black">
+                        ⭐{homePreselectedCount}
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setRosterTab('away')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      rosterTab === 'away'
+                        ? 'bg-sky-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <span>{selectedMatchRosterItem.away_team_name.split(' ')[0]} ({awayBD.total})</span>
+                    {awayPreselectedCount > 0 && (
+                      <span className="bg-amber-500 text-slate-950 text-[10px] px-1 rounded-full font-black">
+                        ⭐{awayPreselectedCount}
+                      </span>
+                    )}
+                  </button>
+                </div>
+
+                {/* Input de Búsqueda de Jugador */}
+                <div className="relative w-full sm:w-64">
+                  <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Cercar dorsal, nom, posició..."
+                    value={rosterSearch}
+                    onChange={(e) => setRosterSearch(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#ff6600]"
+                  />
+                  {rosterSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setRosterSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Contenido / Listado de Jugadores con Informe y Preselección */}
+              <div className="p-4 sm:p-6 overflow-y-auto flex-1 custom-scrollbar space-y-3">
+                {activePlayers.length === 0 ? (
+                  <div className="text-center py-12 text-slate-500 text-xs">
+                    <Users className="w-8 h-8 mx-auto mb-2 text-slate-600" />
+                    <p className="font-bold">No s'han trobat jugadors per a aquesta selecció.</p>
+                  </div>
+                ) : (
+                  activePlayers.map((player) => {
+                    const isPreselected = player.status === 'Preseleccionado';
+                    const playerNote =
+                      playerNotesEdit[player.id] !== undefined
+                        ? playerNotesEdit[player.id]
+                        : player.notes || '';
+
+                    return (
+                      <div
+                        key={player.id}
+                        className={`p-3.5 sm:p-4 rounded-2xl border transition-all ${
+                          isPreselected
+                            ? 'bg-amber-950/20 border-amber-500/40 shadow-lg shadow-amber-950/20'
+                            : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          {/* Izquierda: Dorsal, Foto, Nombre, Equipo y Año */}
+                          <div className="flex items-center gap-3 min-w-0">
+                            {/* Dorsal Badge */}
+                            <JerseyBadge
+                              number={player.jersey_number}
+                              size="sm"
+                              variant="kit"
+                              color={player.infantil_year === 'Infantil 1er año' ? 'orange' : 'blue'}
+                              className="shrink-0"
+                            />
+
+                            {/* Foto / Avatar */}
+                            <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-xs text-slate-300 shrink-0 overflow-hidden shadow">
+                              {player.photo_url ? (
+                                <img src={player.photo_url} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <span>{player.first_name?.[0] || 'J'}{player.last_name?.[0] || ''}</span>
+                              )}
+                            </div>
+
+                            {/* Nombre, Equipo y Posición */}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <h4 className="text-xs sm:text-sm font-black text-white break-words">
+                                  {player.full_name}
+                                </h4>
+                                {isPreselected && (
+                                  <span className="px-2 py-0.2 rounded-full text-[9px] font-black bg-amber-500 text-slate-950 uppercase tracking-wider flex items-center gap-0.5 shadow">
+                                    <Star className="w-2.5 h-2.5 fill-current" /> Preseleccionat
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 mt-0.5">
+                                <span className="text-slate-300 font-bold">{player.team?.name || 'Sense equip'}</span>
+                                <span>·</span>
+                                <span className="text-sky-300 font-semibold">{player.position || 'Jugador'}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Derecha: Badge Año + Botón de Preselección */}
+                          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                            {/* Badge de Año Infantil */}
+                            <span
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border whitespace-nowrap ${
+                                player.infantil_year === 'Infantil 1er año'
+                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                  : player.infantil_year === 'Infantil 2º año'
+                                  ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                                  : 'bg-slate-800 text-slate-400 border-slate-700'
+                              }`}
+                            >
+                              {player.infantil_year === 'Infantil 1er año'
+                                ? '🟢 1r Any (2014)'
+                                : player.infantil_year === 'Infantil 2º año'
+                                ? '🔵 2n Any (2013)'
+                                : 'Infantil'}
+                            </span>
+
+                            {/* Botón de Preselección con Estrella */}
+                            <button
+                              type="button"
+                              onClick={(e) => handleTogglePreselected(player, e)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-sm ${
+                                isPreselected
+                                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 hover:from-rose-600 hover:to-rose-700 hover:text-white shadow-amber-500/30'
+                                  : 'bg-slate-950 hover:bg-amber-500/20 text-slate-300 hover:text-amber-300 border border-slate-800 hover:border-amber-500/40'
+                              }`}
+                            >
+                              <Star className={`w-3.5 h-3.5 ${isPreselected ? 'fill-current' : ''}`} />
+                              <span>{isPreselected ? 'Preseleccionat' : 'Preseleccionar'}</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Campo de Comentario / Informe de Scouting por Jugador */}
+                        <div className="mt-2.5 pt-2.5 border-t border-slate-800/80">
+                          <div className="flex items-start gap-2">
+                            <FileText className="w-3.5 h-3.5 text-slate-500 mt-1 shrink-0" />
+                            <input
+                              type="text"
+                              value={playerNote}
+                              onChange={(e) => handlePlayerNoteChange(player.id, e.target.value)}
+                              placeholder="Afig un breu comentari / informe tècnic sobre el jugador (desat automàtic)..."
+                              className="w-full bg-slate-950/90 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-sky-500 transition-colors"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Pie del Modal */}
+              <div className="p-4 border-t border-slate-800 bg-slate-950 flex items-center justify-between">
+                <span className="text-xs text-slate-400">
+                  Total en pantalla: <strong className="text-white">{activePlayers.length} jugadors</strong>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedMatchRosterItem(null)}
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-white"
+                >
+                  Tancar
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── MODAL DE CONFIRMACIÓN DE BORRADO DE PARTIDO ───────────────────────── */}
+      {confirmDeleteItem && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setConfirmDeleteItem(null)}
+        >
+          <div
+            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-rose-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-white">Eliminar Partit de l'Agenda</h3>
+                <p className="text-xs text-slate-400">Confirmació d'acció</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-1">
+              <p className="text-xs font-bold text-white">
+                {confirmDeleteItem.home_team_name} <span className="text-slate-500">vs</span> {confirmDeleteItem.away_team_name}
+              </p>
+              <p className="text-[11px] text-slate-400">
+                📅 {confirmDeleteItem.scheduled_date ? confirmDeleteItem.scheduled_date.slice(0, 10) : ''} · Tècnic: {confirmDeleteItem.selector_name}
+              </p>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Segur que vols eliminar aquest partit de la teua agenda de seguiment territorial?
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteItem(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+              >
+                Cancel·lar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  removeFromAgenda(confirmDeleteItem.id);
+                  setSuccessToast(`Partit eliminat de l'agenda correctament.`);
+                  setTimeout(() => setSuccessToast(null), 3000);
+                  setConfirmDeleteItem(null);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-black text-white bg-rose-600 hover:bg-rose-500 transition-colors shadow-lg shadow-rose-950/40"
+              >
+                Sí, Eliminar de l'Agenda
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -658,6 +1085,7 @@ export const Agenda: React.FC = () => {
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setObservingItem(null)}
                 className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
               >
@@ -734,12 +1162,14 @@ export const Agenda: React.FC = () => {
             {/* Pie del Modal */}
             <div className="p-4 border-t border-slate-800 bg-slate-950/70 flex items-center justify-end gap-2">
               <button
+                type="button"
                 onClick={() => setObservingItem(null)}
                 className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white"
               >
                 Cancel·lar
               </button>
               <button
+                type="button"
                 onClick={handleSaveObservation}
                 disabled={!observeLocal && !observeAway}
                 className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-black transition-colors flex items-center gap-2 shadow-lg"

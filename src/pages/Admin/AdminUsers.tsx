@@ -86,8 +86,8 @@ export const AdminUsers: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-white uppercase tracking-wider">{t.users}</h1>
-          <p className="text-xs text-slate-400">
+          <h1 className="text-2xl font-black text-[#061338] uppercase tracking-wider">{t.users}</h1>
+          <p className="text-xs font-semibold text-slate-600">
             Control d'accés, permisos i seleccionadors registrats ({users.length})
           </p>
         </div>
@@ -101,7 +101,7 @@ export const AdminUsers: React.FC = () => {
       </div>
 
       {/* Filter / Search Bar */}
-      <Card className="p-4">
+      <Card className="p-4 bg-white border border-slate-200/90 shadow-sm">
         <div className="relative">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
@@ -109,17 +109,17 @@ export const AdminUsers: React.FC = () => {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cercar per nom, correu o categoría..."
-            className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-amber-500 transition-colors"
           />
         </div>
       </Card>
 
       {/* Table */}
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden bg-white border border-slate-200/90 shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 font-bold uppercase tracking-wider">
+              <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-bold uppercase tracking-wider">
                 <th className="p-4">Usuari / Seleccionador</th>
                 <th className="p-4">Categoría</th>
                 <th className="p-4">Rol</th>
@@ -128,11 +128,11 @@ export const AdminUsers: React.FC = () => {
                 <th className="p-4 text-right">Accions de Gestió</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 text-slate-300">
+            <tbody className="divide-y divide-slate-100 text-slate-700">
               {filteredUsers.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-8 text-center text-slate-500 font-medium">
-                    No s'han trobat usuari registrats.
+                    No s'han trobat usuaris registrats.
                   </td>
                 </tr>
               ) : (
@@ -141,31 +141,31 @@ export const AdminUsers: React.FC = () => {
                   const isMainAdmin = u.email === 'seleccio.castello.2026@gmail.com';
 
                   return (
-                    <tr key={u.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="p-4 font-bold text-white flex items-center gap-3">
+                    <tr key={u.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="p-4 font-bold text-slate-900 flex items-center gap-3">
                         <div
                           className={`w-9 h-9 rounded-full border flex items-center justify-center font-black ${
                             isAdmin
-                              ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-                              : 'bg-sky-500/10 border-sky-500/30 text-sky-400'
+                              ? 'bg-amber-500/10 border-amber-500/30 text-amber-700'
+                              : 'bg-sky-500/10 border-sky-500/30 text-sky-700'
                           }`}
                         >
                           {u.full_name ? u.full_name[0].toUpperCase() : 'U'}
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-100">{u.full_name}</span>
+                            <span className="font-bold text-[#061338]">{u.full_name}</span>
                             {isMainAdmin && (
-                              <span className="text-[10px] bg-amber-400/20 text-amber-300 border border-amber-400/30 px-1.5 py-0.5 rounded font-bold">
+                              <span className="text-[10px] bg-amber-400/20 text-amber-800 border border-amber-400/40 px-1.5 py-0.5 rounded font-bold">
                                 ADMIN PRINCIPAL
                               </span>
                             )}
                           </div>
-                          <p className="text-[10px] text-slate-400 font-normal">{u.email}</p>
+                          <p className="text-[10px] text-slate-500 font-normal">{u.email}</p>
                         </div>
                       </td>
 
-                      <td className="p-4 font-semibold text-slate-300">
+                      <td className="p-4 font-semibold text-slate-600">
                         {u.category_assigned || 'Totes'}
                       </td>
 
@@ -175,7 +175,7 @@ export const AdminUsers: React.FC = () => {
                         </Badge>
                       </td>
 
-                      <td className="p-4 text-slate-400">{u.last_login || 'Sens dades'}</td>
+                      <td className="p-4 text-slate-500">{u.last_login || 'Sens dades'}</td>
 
                       <td className="p-4">
                         <button
@@ -183,8 +183,8 @@ export const AdminUsers: React.FC = () => {
                           title="Fes clic per canviar l'estat d'activació"
                           className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase transition-all flex items-center gap-1 ${
                             u.is_active
-                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30'
-                              : 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200'
+                              : 'bg-red-100 text-red-800 border border-red-300 hover:bg-red-200'
                           }`}
                         >
                           <Power className="w-3 h-3" />
@@ -197,10 +197,10 @@ export const AdminUsers: React.FC = () => {
                           {!isMainAdmin && (
                             <button
                               onClick={() => handleToggleRole(u.id, u.role?.name)}
-                              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1"
+                              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
                               title="Canviar entre Admin i Seleccionador"
                             >
-                              {isAdmin ? <UserCheck className="w-3.5 h-3.5 text-sky-400" /> : <Shield className="w-3.5 h-3.5 text-amber-400" />}
+                              {isAdmin ? <UserCheck className="w-3.5 h-3.5 text-sky-600" /> : <Shield className="w-3.5 h-3.5 text-amber-600" />}
                               <span>{isAdmin ? 'Fer Seleccionador' : 'Fer Admin'}</span>
                             </button>
                           )}
@@ -208,7 +208,7 @@ export const AdminUsers: React.FC = () => {
                           {!isMainAdmin && u.id !== currentUser?.id && (
                             <button
                               onClick={() => handleDeleteUser(u.id, u.email)}
-                              className="p-1.5 bg-red-950/40 hover:bg-red-900/60 text-red-400 border border-red-800/40 rounded-lg transition-colors"
+                              className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg transition-colors"
                               title="Eliminar Usuari"
                             >
                               <Trash2 className="w-3.5 h-3.5" />

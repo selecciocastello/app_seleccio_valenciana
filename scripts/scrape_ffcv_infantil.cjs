@@ -20,6 +20,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { toPhotoUrl } = require('./player_photos.cjs');
 
 // Intentar cargar playwright desde node_modules local o desde App UD Atzeneta
 let chromium;
@@ -326,7 +327,7 @@ async function trySaveToSupabase(matches, teams, players) {
           last_name: lastName,
           position: p.position || 'Candidato',
           jersey_number: cleanJersey,
-          photo_url: p.photo_url || null,
+          photo_url: toPhotoUrl(p.photo_url, sourcePlayerId),
           team_id: teamId,
           city: p.city || 'Castelló',
           province: p.province || 'Castelló',
@@ -852,7 +853,7 @@ async function scrapePlayerWithRetry(page, playerUrl, maxRetries = 2) {
                   position: profileData?.position || 'Sense definir',
                   dorsal: profileData?.dorsal || null,
                   age: profileData?.age || null,
-                  photo_url: profileData?.photo || null,
+                  photo_url: toPhotoUrl(profileData?.photo, codJugador),
                   team: nombreEquipo,
                   team_id: `ffcv-team-${codEquipo}`,
                   competition: comp.name,

@@ -379,10 +379,10 @@ export const Teams: React.FC = () => {
 
       {/* ── LISTADO DE EQUIPOS ORGANIZADOS POR CATEGORÍA ──────────────────────── */}
       {filteredTeams.length === 0 ? (
-        <div className="text-center py-16 bg-slate-900/40 border border-slate-800/80 rounded-2xl">
-          <Shield className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-          <h3 className="text-base font-bold text-white">No s'han trobat equips</h3>
-          <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1">
+        <div className="text-center py-16 bg-white border border-slate-200 rounded-2xl shadow-sm">
+          <Shield className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+          <h3 className="text-base font-bold text-[#061338]">No s'han trobat equips</h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
             Revisa el text de cerca o el filtre seleccionat.
           </p>
         </div>
@@ -390,13 +390,13 @@ export const Teams: React.FC = () => {
         Array.from(groupedTeams.entries()).map(([categoryTitle, categoryTeams]) => (
           <div key={categoryTitle} className="space-y-3.5">
             {/* Cabecera de Categoría */}
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
+            <div className="flex items-center justify-between border-b border-slate-300/80 pb-2.5">
               <div className="flex items-center gap-2.5">
                 <span className="w-3 h-3 rounded-full bg-[#ff6600]" />
-                <h2 className="text-base font-black text-white uppercase tracking-wider">
+                <h2 className="text-base font-black text-[#061338] uppercase tracking-wider">
                   {categoryTitle}
                 </h2>
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
                   {categoryTeams.length} {categoryTeams.length === 1 ? 'equip' : 'equips'}
                 </span>
               </div>

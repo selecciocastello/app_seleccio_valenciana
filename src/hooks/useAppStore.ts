@@ -2,34 +2,26 @@ import { useState, useEffect, useCallback } from 'react';
 import type { Player, Team, Match, Callup, TrainingSession, PlayerReport, ScoutingAgendaItem } from '../types/models';
 import { supabaseService } from '../services/supabaseService';
 import { calculateInfantilYear } from '../utils/infantilYear';
-import scrapedMatchesData from '../data/scraped_matches.json';
-import scrapedPlayersData from '../data/scraped_players.json';
-import scrapedTeamsData from '../data/scraped_teams.json';
+import { cacheGet, cacheSet } from '../utils/dataCache';
 
 const INITIAL_CALLUPS: Callup[] = [];
 const INITIAL_TRAININGS: TrainingSession[] = [];
 const INITIAL_REPORTS: PlayerReport[] = [];
 
-const PARSED_SCRAPED_TEAMS: Team[] = (scrapedTeamsData as any[]).map((t) => ({
-  id: t.id || `team_${t.ffcv_cod}`,
-  name: t.name,
-  club: t.club || t.name,
-  competition: t.competition || 'Lliga Preferent Infantil',
-  group: t.group || 'Grup - 1',
-  crest_url: t.crest_url,
-  field_name: t.field_name,
-  city: t.city && t.city !== '0' ? t.city : 'Castelló',
-  province: t.province && t.province !== 'Otra' ? t.province : 'Castelló',
-  address: t.address
-}));
+interface HeavyData {
+  players: Player[];
+  teams: Team[];
+  matches: Match[];
+}
 
-const ALL_INITIAL_TEAMS: Team[] = PARSED_SCRAPED_TEAMS;
+interface HeavyCache extends HeavyData {
+  version: string | null;
+  savedAt: number;
+}
 
-const teamsMap = new Map<string, Team>();
-PARSED_SCRAPED_TEAMS.forEach((t) => {
-  teamsMap.set(t.id, t);
-  teamsMap.set(t.name.trim().toLowerCase(), t);
-});
+const HEAVY_CACHE_KEY = 'heavy_data_v1';
+// Aunque la versión no cambie, se refresca como mucho una vez al día
+const HEAVY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 function parsePlayerName(rawName?: string) {
   if (!rawName) return { firstName: 'Jugador', lastName: '', fullName: 'Jugador' };
@@ -54,97 +46,187 @@ function parsePlayerName(rawName?: string) {
   }
 }
 
-const PARSED_SCRAPED_PLAYERS: Player[] = (scrapedPlayersData as any[]).map((p) => {
-  const { firstName, lastName, fullName } = parsePlayerName(p.full_name);
-  const calculatedYear = calculateInfantilYear(p.history, p.age, p.infantil_year);
-  const matchedTeam = teamsMap.get(p.team_id) || teamsMap.get((p.team || '').trim().toLowerCase());
-  return {
-    id: p.id || `player_${p.ffcv_player_id}`,
-    first_name: firstName,
-    last_name: lastName,
-    full_name: fullName,
-    team_id: matchedTeam?.id || p.team_id,
-    team: matchedTeam
-      ? {
-          id: matchedTeam.id,
-          name: matchedTeam.name,
-          club: matchedTeam.club || matchedTeam.name,
-          crest_url: matchedTeam.crest_url,
-          city: matchedTeam.city || 'Castelló'
-        }
-      : {
-          id: p.team_id,
-          name: p.team,
-          club: p.team,
-          city: 'Castelló'
-        },
-    jersey_number: p.dorsal || undefined,
-    position: p.position && p.position !== 'Candidato' ? p.position : undefined,
-    phone: p.phone,
-    email: p.email,
-    guardian_name: p.guardian_name,
-    guardian_phone: p.guardian_phone,
-    guardian_email: p.guardian_email,
-    notes: p.notes,
-    age: p.age,
-    photo_url: p.photo_url,
-    infantil_year: calculatedYear,
-    history: p.history || [],
-    sports_data: p.sports_data || {},
-    status: 'Candidato',
-    source: 'ffcv_scraping',
-    source_player_id: String(p.ffcv_player_id || ''),
-    source_url: p.source_url,
-    scraped_at: p.scraped_at
-  };
-});
+// Datos del último scraping incluidos en el repo. Se cargan bajo demanda (chunk aparte)
+// solo si Supabase no está disponible y no hay caché local, para no engordar el bundle.
+async function loadBundledData(): Promise<HeavyData> {
+  const [teamsModule, playersModule, matchesModule] = await Promise.all([
+    import('../data/scraped_teams.json'),
+    import('../data/scraped_players.json'),
+    import('../data/scraped_matches.json')
+  ]);
 
-const ALL_INITIAL_PLAYERS: Player[] = PARSED_SCRAPED_PLAYERS;
+  const teams: Team[] = (teamsModule.default as any[]).map((t) => ({
+    id: t.id || `team_${t.ffcv_cod}`,
+    name: t.name,
+    club: t.club || t.name,
+    competition: t.competition || 'Lliga Preferent Infantil',
+    group: t.group || 'Grup - 1',
+    crest_url: t.crest_url,
+    field_name: t.field_name,
+    city: t.city && t.city !== '0' ? t.city : 'Castelló',
+    province: t.province && t.province !== 'Otra' ? t.province : 'Castelló',
+    address: t.address
+  }));
 
-const PARSED_SCRAPED_MATCHES: Match[] = (scrapedMatchesData as any[]).map((m) => ({
-  id: m.id,
-  home_team_id: m.home_team_id,
-  home_team_name: m.home_team_name || m.home_team,
-  home_crest: m.home_crest,
-  home_position: m.home_position,
-  home_points: m.home_points,
-  away_team_id: m.away_team_id,
-  away_team_name: m.away_team_name || m.away_team,
-  away_crest: m.away_crest,
-  away_position: m.away_position,
-  away_points: m.away_points,
-  competition_name: m.competition_name || m.competition,
-  group_name: m.group_name || m.group,
-  matchday: m.matchday,
-  match_date: m.match_date ? `${m.match_date}T${m.time || '09:00:00'}Z` : new Date().toISOString(),
-  time: m.time,
-  field_name: m.field_name,
-  field_code: m.field_code,
-  address: m.address,
-  city: m.city,
-  province: m.province,
-  postal_code: m.postal_code,
-  surface: m.surface,
-  latitude: m.latitude,
-  longitude: m.longitude,
-  status: (m.status as any) || 'Programado',
-  home_score: m.home_score,
-  away_score: m.away_score,
-  referees: m.referees || [],
-  codacta: m.codacta,
-  source: 'ffcv_scraping'
-}));
+  const teamsMap = new Map<string, Team>();
+  teams.forEach((t) => {
+    teamsMap.set(t.id, t);
+    teamsMap.set(t.name.trim().toLowerCase(), t);
+  });
 
-const ALL_INITIAL_MATCHES: Match[] = PARSED_SCRAPED_MATCHES;
+  const players: Player[] = (playersModule.default as any[]).map((p) => {
+    const { firstName, lastName, fullName } = parsePlayerName(p.full_name);
+    const calculatedYear = calculateInfantilYear(p.history, p.age, p.infantil_year);
+    const matchedTeam = teamsMap.get(p.team_id) || teamsMap.get((p.team || '').trim().toLowerCase());
+    return {
+      id: p.id || `player_${p.ffcv_player_id}`,
+      first_name: firstName,
+      last_name: lastName,
+      full_name: fullName,
+      team_id: matchedTeam?.id || p.team_id,
+      team: matchedTeam
+        ? {
+            id: matchedTeam.id,
+            name: matchedTeam.name,
+            club: matchedTeam.club || matchedTeam.name,
+            crest_url: matchedTeam.crest_url,
+            city: matchedTeam.city || 'Castelló'
+          }
+        : {
+            id: p.team_id,
+            name: p.team,
+            club: p.team,
+            city: 'Castelló'
+          },
+      jersey_number: p.dorsal || undefined,
+      position: p.position && p.position !== 'Candidato' ? p.position : undefined,
+      phone: p.phone,
+      email: p.email,
+      guardian_name: p.guardian_name,
+      guardian_phone: p.guardian_phone,
+      guardian_email: p.guardian_email,
+      notes: p.notes,
+      age: p.age,
+      photo_url: p.photo_url,
+      infantil_year: calculatedYear,
+      history: p.history || [],
+      sports_data: p.sports_data || {},
+      status: 'Candidato',
+      source: 'ffcv_scraping',
+      source_player_id: String(p.ffcv_player_id || ''),
+      source_url: p.source_url,
+      scraped_at: p.scraped_at
+    };
+  });
+
+  const matches: Match[] = (matchesModule.default as any[]).map((m) => ({
+    id: m.id,
+    home_team_id: m.home_team_id,
+    home_team_name: m.home_team_name || m.home_team,
+    home_crest: m.home_crest,
+    home_position: m.home_position,
+    home_points: m.home_points,
+    away_team_id: m.away_team_id,
+    away_team_name: m.away_team_name || m.away_team,
+    away_crest: m.away_crest,
+    away_position: m.away_position,
+    away_points: m.away_points,
+    competition_name: m.competition_name || m.competition,
+    group_name: m.group_name || m.group,
+    matchday: m.matchday,
+    match_date: m.match_date ? `${m.match_date}T${m.time || '09:00:00'}Z` : new Date().toISOString(),
+    time: m.time,
+    field_name: m.field_name,
+    field_code: m.field_code,
+    address: m.address,
+    city: m.city,
+    province: m.province,
+    postal_code: m.postal_code,
+    surface: m.surface,
+    latitude: m.latitude,
+    longitude: m.longitude,
+    status: (m.status as any) || 'Programado',
+    home_score: m.home_score,
+    away_score: m.away_score,
+    referees: m.referees || [],
+    codacta: m.codacta,
+    source: 'ffcv_scraping'
+  }));
+
+  return { players, teams, matches };
+}
 
 // --- ESTADO GLOBAL COMPARTIDO EN MEMORIA (Singleton para evitar saltos o re-fetches al cambiar de página) ---
-let memoryPlayers: Player[] = ALL_INITIAL_PLAYERS;
-let memoryTeams: Team[] = ALL_INITIAL_TEAMS;
-let memoryMatches: Match[] = ALL_INITIAL_MATCHES;
+let memoryPlayers: Player[] = [];
+let memoryTeams: Team[] = [];
+let memoryMatches: Match[] = [];
 let memoryCallups: Callup[] = INITIAL_CALLUPS;
 let memoryTrainings: TrainingSession[] = INITIAL_TRAININGS;
 let memoryReports: PlayerReport[] = INITIAL_REPORTS;
 let isDataLoadedFromDb = false;
+let heavyCacheVersion: string | null = null;
+let heavyCacheSavedAt = 0;
+
+// Las ediciones locales se guardan en caché sin alargar el TTL de la descarga original
+function persistHeavyCache() {
+  cacheSet<HeavyCache>(HEAVY_CACHE_KEY, {
+    players: memoryPlayers,
+    teams: memoryTeams,
+    matches: memoryMatches,
+    version: heavyCacheVersion,
+    savedAt: heavyCacheSavedAt
+  });
+}
+
+function applyHeavyData(data: HeavyData) {
+  if (data.players.length > 0) memoryPlayers = data.players;
+  if (data.teams.length > 0) memoryTeams = data.teams;
+  if (data.matches.length > 0) memoryMatches = data.matches;
+}
+
+// Jugadores, equipos y partidos: caché local -> Supabase solo si hay cambios -> JSON del repo
+async function loadHeavyData() {
+  const cached = await cacheGet<HeavyCache>(HEAVY_CACHE_KEY);
+  if (cached) {
+    applyHeavyData(cached);
+    heavyCacheVersion = cached.version;
+    heavyCacheSavedAt = cached.savedAt;
+    notify();
+  }
+
+  if (supabaseService.isConfigured()) {
+    const version = await supabaseService.fetchDataVersion();
+    const cacheIsFresh =
+      cached &&
+      version !== null &&
+      cached.version === version &&
+      Date.now() - cached.savedAt < HEAVY_CACHE_TTL_MS;
+    if (cacheIsFresh) return;
+
+    const [dbPlayers, dbTeams, dbMatches] = await Promise.all([
+      supabaseService.fetchPlayers(),
+      supabaseService.fetchTeams(),
+      supabaseService.fetchMatches()
+    ]);
+    if (dbPlayers.length > 0 && dbTeams.length > 0 && dbMatches.length > 0) {
+      applyHeavyData({ players: dbPlayers, teams: dbTeams, matches: dbMatches });
+      heavyCacheVersion = version;
+      heavyCacheSavedAt = Date.now();
+      persistHeavyCache();
+      notify();
+      return;
+    }
+    applyHeavyData({ players: dbPlayers, teams: dbTeams, matches: dbMatches });
+  }
+
+  if (!cached && (memoryPlayers.length === 0 || memoryTeams.length === 0 || memoryMatches.length === 0)) {
+    const bundled = await loadBundledData();
+    if (memoryPlayers.length === 0) memoryPlayers = bundled.players;
+    if (memoryTeams.length === 0) memoryTeams = bundled.teams;
+    if (memoryMatches.length === 0) memoryMatches = bundled.matches;
+  }
+  notify();
+}
 
 const listeners = new Set<() => void>();
 function notify() {
@@ -179,23 +261,20 @@ export function useAppStore() {
   }, [agenda]);
 
   useEffect(() => {
-    if (supabaseService.isConfigured() && !isDataLoadedFromDb) {
-      isDataLoadedFromDb = true;
-      setIsSupabaseConnected(true);
+    if (isDataLoadedFromDb) return;
+    isDataLoadedFromDb = true;
+    setIsSupabaseConnected(Boolean(supabaseService.isConfigured()));
 
-      // Cargar datos reales desde Supabase una sola vez al iniciar la sesión
+    loadHeavyData();
+
+    if (supabaseService.isConfigured()) {
+      // Datos ligeros y editables: siempre se piden frescos
       Promise.all([
-        supabaseService.fetchPlayers(),
-        supabaseService.fetchTeams(),
-        supabaseService.fetchMatches(),
         supabaseService.fetchCallups(),
         supabaseService.fetchTrainings(),
         supabaseService.fetchReports(),
         supabaseService.fetchAgenda()
-      ]).then(([dbPlayers, dbTeams, dbMatches, dbCallups, dbTrainings, dbReports, dbAgenda]) => {
-        if (dbPlayers.length > 0) memoryPlayers = dbPlayers;
-        if (dbTeams.length > 0) memoryTeams = dbTeams;
-        if (dbMatches.length > 0) memoryMatches = dbMatches;
+      ]).then(([dbCallups, dbTrainings, dbReports, dbAgenda]) => {
         if (dbCallups.length > 0) memoryCallups = dbCallups;
         if (dbTrainings.length > 0) memoryTrainings = dbTrainings;
         if (dbReports.length > 0) memoryReports = dbReports;
@@ -241,6 +320,7 @@ export function useAppStore() {
         notify();
       }
     }
+    persistHeavyCache();
 
     return created;
   };
@@ -250,6 +330,7 @@ export function useAppStore() {
       p.id === id ? { ...p, ...updates, updated_at: new Date().toISOString() } : p
     );
     notify();
+    persistHeavyCache();
 
     if (supabaseService.isConfigured()) {
       supabaseService.updatePlayer(id, updates);

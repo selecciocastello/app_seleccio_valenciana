@@ -212,6 +212,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       last_login: new Date().toLocaleDateString('es-ES') + ' ' + new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
     };
 
+    // Registrar en Supabase Auth en segundo plano
+    supabase.auth.signUp({
+      email: emailTrim,
+      password: data.password,
+      options: {
+        data: {
+          full_name: data.full_name.trim(),
+          category_assigned: data.category_assigned || 'Sub-16',
+          role_name: 'seleccionador'
+        }
+      }
+    }).catch((err) => {
+      console.warn('Supabase Auth signUp:', err);
+    });
+
     const newUsersList = [newUser, ...users];
     saveUsers(newUsersList);
     setUser(newUser);
@@ -222,9 +237,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const addUser = (data: RegisterData & { role?: 'admin' | 'seleccionador' }): Profile => {
     const roleName = data.role || 'seleccionador';
+    const emailTrim = data.email.trim().toLowerCase();
     const newUser: Profile = {
       id: crypto.randomUUID(),
-      email: data.email.trim().toLowerCase(),
+      email: emailTrim,
       password: data.password || 'castello.2026',
       full_name: data.full_name.trim(),
       category_assigned: data.category_assigned || 'Sub-16',
@@ -235,8 +251,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       },
       is_active: true,
       created_at: new Date().toISOString(),
-      last_login: 'Sense acceso encara'
+      last_login: 'Sense accés encara'
     };
+
+    // Registrar en Supabase Auth en segundo plano para que aparezca en el Dashboard de Supabase
+    supabase.auth.signUp({
+      email: emailTrim,
+      password: data.password || 'castello.2026',
+      options: {
+        data: {
+          full_name: data.full_name.trim(),
+          category_assigned: data.category_assigned || 'Sub-16',
+          role_name: roleName
+        }
+      }
+    }).catch((err) => {
+      console.warn('Supabase Auth signUp:', err);
+    });
 
     const newUsersList = [newUser, ...users];
     saveUsers(newUsersList);

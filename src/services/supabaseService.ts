@@ -5,6 +5,23 @@ import { calculateInfantilYear } from '../utils/infantilYear';
 export const supabaseService = {
   isConfigured: isSupabaseConfigured,
 
+  // Versión de los datos pesados: máximo updated_at de jugadores, equipos y partidos.
+  // Son 3 consultas de una fila, así el cliente decide si su caché local sigue valiendo.
+  async fetchDataVersion(): Promise<string | null> {
+    if (!isSupabaseConfigured()) return null;
+    try {
+      const results = await Promise.all(
+        ['players', 'teams', 'matches'].map((table) =>
+          supabase.from(table).select('updated_at').order('updated_at', { ascending: false, nullsFirst: false }).limit(1)
+        )
+      );
+      if (results.some((r) => r.error)) return null;
+      return results.map((r) => r.data?.[0]?.updated_at ?? '').join('|');
+    } catch {
+      return null;
+    }
+  },
+
   // --- PLAYERS ---
   async fetchPlayers(): Promise<Player[]> {
     if (!isSupabaseConfigured()) return [];

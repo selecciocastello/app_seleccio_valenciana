@@ -288,14 +288,14 @@ export const Agenda: React.FC = () => {
       </div>
 
       {/* ── SELECTOR DE PESTAÑAS PRINCIPALES ──────────────────────────────────── */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-200 pb-3">
         <div className="flex gap-2 overflow-x-auto custom-scrollbar">
           <button
             onClick={() => setActiveTab('my_agenda')}
             className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${
               activeTab === 'my_agenda'
-                ? 'bg-[#ff6600] text-white shadow-lg shadow-orange-950/20'
-                : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
+                ? 'bg-[#ff6600] text-white shadow-md'
+                : 'bg-white border border-slate-200 text-slate-700 hover:text-[#061338] hover:bg-slate-100 shadow-xs'
             }`}
           >
             <CalendarCheck className="w-4 h-4" />
@@ -306,8 +306,8 @@ export const Agenda: React.FC = () => {
             onClick={() => setActiveTab('browse')}
             className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 whitespace-nowrap shrink-0 ${
               activeTab === 'browse'
-                ? 'bg-[#ff6600] text-white shadow-lg shadow-orange-950/20'
-                : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
+                ? 'bg-[#ff6600] text-white shadow-md'
+                : 'bg-white border border-slate-200 text-slate-700 hover:text-[#061338] hover:bg-slate-100 shadow-xs'
             }`}
           >
             <Plus className="w-4 h-4" />
@@ -319,7 +319,6 @@ export const Agenda: React.FC = () => {
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
             {/* Filtro Estado */}
             <CustomSelect
-              theme="dark"
               value={statusFilter}
               onChange={(val) => setStatusFilter(val as any)}
               options={[
@@ -332,7 +331,6 @@ export const Agenda: React.FC = () => {
             {/* Filtro Seleccionador */}
             {selectorsList.length > 1 && (
               <CustomSelect
-                theme="dark"
                 value={selectorFilter}
                 onChange={setSelectorFilter}
                 options={[
@@ -349,10 +347,10 @@ export const Agenda: React.FC = () => {
       {activeTab === 'my_agenda' && (
         <div className="space-y-4">
           {filteredAgenda.length === 0 ? (
-            <div className="text-center py-16 bg-slate-900/40 border border-slate-800 rounded-2xl p-6">
-              <CalendarCheck className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-              <h3 className="text-base font-bold text-white">No hi ha partits a l'agenda</h3>
-              <p className="text-xs text-slate-400 max-w-md mx-auto mt-1 mb-5">
+            <div className="text-center py-16 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+              <CalendarCheck className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+              <h3 className="text-base font-bold text-[#061338]">No hi ha partits a l'agenda</h3>
+              <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-5">
                 Encara no has afegit cap partit a la teua planificació d'observació territorial.
               </p>
               <button

@@ -45,8 +45,8 @@ export const AdminScraping: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-white uppercase tracking-wider">{t.scraping}</h1>
-          <p className="text-xs text-slate-400">
+          <h1 className="text-2xl font-black text-[#061338] uppercase tracking-wider">{t.scraping}</h1>
+          <p className="text-xs font-semibold text-slate-600">
             Capa d'integració externa i ingestió desacoplada per a la Selecció de Castelló
           </p>
         </div>
@@ -73,36 +73,36 @@ export const AdminScraping: React.FC = () => {
           </h3>
 
           <div className="space-y-3 text-xs">
-            <div className="flex justify-between py-2 border-b border-slate-800">
-              <span className="text-slate-400">Última Execució:</span>
+            <div className="flex justify-between py-2 border-b border-blue-900/60">
+              <span className="text-sky-200">Última Execució:</span>
               <span className="text-white font-semibold">19/09/2026 11:30h</span>
             </div>
-            <div className="flex justify-between py-2 border-b border-slate-800">
-              <span className="text-slate-400">Estat:</span>
+            <div className="flex justify-between py-2 border-b border-blue-900/60">
+              <span className="text-sky-200">Estat:</span>
               <Badge variant="success">Servidor Actiu</Badge>
             </div>
-            <div className="flex justify-between py-2 border-b border-slate-800">
-              <span className="text-slate-400">Font Externa actual:</span>
-              <span className="text-sky-300 font-mono">fuente_territorial_castello_mock</span>
+            <div className="flex justify-between py-2 border-b border-blue-900/60">
+              <span className="text-sky-200">Font Externa actual:</span>
+              <span className="text-amber-300 font-mono">fuente_territorial_castello_mock</span>
             </div>
           </div>
 
-          <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-300 space-y-1">
-            <div className="flex items-center gap-1.5 font-bold">
+          <div className="p-3 bg-amber-500/15 border border-amber-500/30 rounded-xl text-xs text-amber-200 space-y-1">
+            <div className="flex items-center gap-1.5 font-bold text-amber-300">
               <AlertTriangle className="w-4 h-4 text-amber-400" />
               <span>Protecció d'Edicions Manuals</span>
             </div>
-            <p className="text-[11px] text-amber-200/80">
+            <p className="text-[11px] text-amber-100/80">
               Els jugadors modificats manualment pels seleccionadors tenen el flag{' '}
-              <code>is_manual_override = true</code> per a evitar sobreescritures accidentals.
+              <code className="bg-amber-950/60 px-1 py-0.5 rounded">is_manual_override = true</code> per a evitar sobreescritures accidentals.
             </p>
           </div>
         </Card>
 
         {/* Logs de Consola */}
-        <Card className="p-6 space-y-4 lg:col-span-2">
-          <h3 className="text-base font-bold text-white flex items-center gap-2">
-            <ScrollText className="w-4 h-4 text-emerald-400" />
+        <Card className="p-6 space-y-4 lg:col-span-2 bg-white border border-slate-200/90 shadow-sm">
+          <h3 className="text-base font-black text-[#061338] flex items-center gap-2 uppercase tracking-wide">
+            <ScrollText className="w-4 h-4 text-emerald-600" />
             <span>Logs i Consola d'Execució</span>
           </h3>
 

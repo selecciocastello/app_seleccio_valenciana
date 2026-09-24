@@ -66,27 +66,27 @@ export const Training: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
           {trainings.map((session) => (
-            <Card key={session.id} className="p-6 space-y-4">
+            <Card key={session.id} className="p-6 space-y-4 bg-white border border-slate-200/90 shadow-sm">
               <div className="flex items-start justify-between">
                 <div>
                   <Badge variant="success">Entrenament Tàctic</Badge>
-                  <h3 className="text-lg font-black text-white mt-2">{session.title}</h3>
-                  <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-1">
-                    <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                  <h3 className="text-lg font-black text-[#061338] mt-2">{session.title}</h3>
+                  <p className="text-xs text-slate-500 font-semibold flex items-center gap-1.5 mt-1">
+                    <Calendar className="w-3.5 h-3.5 text-emerald-600" />
                     {new Date(session.start_time).toLocaleDateString('ca-ES')} • 18:00h - 20:00h
                   </p>
                 </div>
               </div>
 
               {session.objective && (
-                <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-slate-300">
-                  <strong className="text-emerald-400">Objectiu Principal:</strong> {session.objective}
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700">
+                  <strong className="text-emerald-700 font-bold">Objectiu Principal:</strong> {session.objective}
                 </div>
               )}
 
               {/* Registro Rápido de Asistencia */}
-              <div className="pt-3 border-t border-slate-800">
-                <h4 className="text-xs font-bold text-slate-300 mb-3">Control d'Assistència de Jugadors Convocats:</h4>
+              <div className="pt-3 border-t border-slate-100">
+                <h4 className="text-xs font-bold text-slate-700 mb-3">Control d'Assistència de Jugadors Convocats:</h4>
                 {(() => {
                   const trainingPlayers = players.filter(
                     (p) => p.status === 'Seleccionado' || p.status === 'Preseleccionado'
@@ -94,7 +94,7 @@ export const Training: React.FC = () => {
 
                   if (trainingPlayers.length === 0) {
                     return (
-                      <p className="text-xs text-slate-500 italic p-3 bg-slate-950/40 rounded-xl border border-slate-800">
+                      <p className="text-xs text-slate-500 italic p-3 bg-slate-50 rounded-xl border border-slate-200">
                         No hi ha jugadors seleccionats per a aquesta sessió d'entrenament.
                       </p>
                     );
@@ -107,24 +107,24 @@ export const Training: React.FC = () => {
                         return (
                           <div
                             key={player.id}
-                            className="flex items-center justify-between p-2.5 bg-slate-950/60 border border-slate-800 rounded-xl text-xs"
+                            className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs"
                           >
-                            <span className="font-semibold text-white">{player.full_name}</span>
+                            <span className="font-bold text-[#061338]">{player.full_name}</span>
                             <button
                               onClick={() => toggleAttendance(player.id)}
-                              className={`flex items-center gap-1 px-2 py-1 rounded-lg font-bold text-[10px] transition-colors ${
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[10px] transition-colors ${
                                 attended
-                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                  : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                  : 'bg-rose-100 text-rose-800 border border-rose-300'
                               }`}
                             >
                               {attended ? (
                                 <>
-                                  <CheckCircle2 className="w-3 h-3" /> Assistit
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Assistit
                                 </>
                               ) : (
                                 <>
-                                  <XCircle className="w-3 h-3" /> No Assistit
+                                  <XCircle className="w-3 h-3 text-rose-600" /> No Assistit
                                 </>
                               )}
                             </button>
@@ -140,20 +140,20 @@ export const Training: React.FC = () => {
         </div>
 
         {/* Ejercicios Recomendados / Biblioteca */}
-        <Card className="p-5 space-y-4">
-          <h3 className="text-base font-bold text-white flex items-center gap-2">
-            <Dumbbell className="w-4 h-4 text-emerald-400" />
+        <Card className="p-5 space-y-4 bg-white border border-slate-200/90 shadow-sm">
+          <h3 className="text-base font-black text-[#061338] flex items-center gap-2 uppercase tracking-wide">
+            <Dumbbell className="w-4 h-4 text-emerald-600" />
             <span>Biblioteca d'Exercicis</span>
           </h3>
 
           <div className="space-y-3 text-xs">
-            <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl">
-              <h4 className="font-bold text-white">Rondo Tàctic 5x2 amb Transició</h4>
-              <p className="text-slate-400 mt-1">Durada: 15 min. Espai reduït. Treball de pressió rere pèrdua.</p>
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+              <h4 className="font-bold text-[#061338]">Rondo Tàctic 5x2 amb Transició</h4>
+              <p className="text-slate-600 mt-1">Durada: 15 min. Espai reduït. Treball de pressió rere pèrdua.</p>
             </div>
-            <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl">
-              <h4 className="font-bold text-white">Partit Reduït amb Eixida des de Enrere</h4>
-              <p className="text-slate-400 mt-1">Durada: 25 min. Posicionament dels centrals i pivote.</p>
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+              <h4 className="font-bold text-[#061338]">Partit Reduït amb Eixida des de Enrere</h4>
+              <p className="text-slate-600 mt-1">Durada: 25 min. Posicionament dels centrals i pivote.</p>
             </div>
           </div>
         </Card>

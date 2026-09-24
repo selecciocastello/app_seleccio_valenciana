@@ -6,6 +6,7 @@ if (!globalThis.WebSocket) {
 const fs = require('fs');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
+const { toPhotoUrl } = require('./player_photos.cjs');
 
 function loadEnv() {
   const envPath = path.join(__dirname, '..', '.env');
@@ -176,7 +177,7 @@ async function main() {
         last_name: lastName,
         position: p.position || 'Candidato',
         jersey_number: cleanJersey,
-        photo_url: p.photo_url || null,
+        photo_url: toPhotoUrl(p.photo_url, sourcePlayerId),
         team_id: teamId || null,
         city: p.city || 'Castelló',
         province: p.province || 'Castelló',

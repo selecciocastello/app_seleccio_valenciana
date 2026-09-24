@@ -156,29 +156,34 @@ async function loadBundledData(): Promise<HeavyData> {
 }
 
 const CALLUPS_STORAGE_KEY = 'seleccio_callups_v1';
-const DEFAULT_INITIAL_CALLUPS: Callup[] = [
-  {
-    id: 'c_default_1',
-    title: '1a Convocatòria Oficial - Selecció Infantil Castelló',
-    date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
-    location: 'Instal·lacions Esportives Chencho (Castelló)',
-    status: 'Planificada',
-    notes: 'Primer entrenament de preparació i observació tàctica.',
-    callup_players: []
-  }
-];
+
+const isSeedDummyCallup = (c: Callup) =>
+  !c || c.id === 'c_default_1' || c.id?.startsWith('c1000000-') || c.id?.startsWith('c2000000-') || c.title?.includes('Sub-16');
+
+const isSeedDummyTraining = (t: TrainingSession) =>
+  !t || t.id?.startsWith('d1000000-') || t.title?.includes('Fase Regional');
 
 function loadStoredCallups(): Callup[] {
   try {
     const raw = localStorage.getItem(CALLUPS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter((c: Callup) => !isSeedDummyCallup(c))
+          .map((c: Callup) => ({
+            ...c,
+            callup_players: (c.callup_players || []).map((cp) => ({
+              ...cp,
+              player: cp.player || memoryPlayers.find((p) => p.id === cp.player_id)
+            }))
+          }));
+      }
     }
   } catch (e) {
     console.error('Error loading stored callups', e);
   }
-  return DEFAULT_INITIAL_CALLUPS;
+  return [];
 }
 
 // --- ESTADO GLOBAL COMPARTIDO EN MEMORIA (Singleton para evitar saltos o re-fetches al cambiar de página) ---
@@ -308,8 +313,15 @@ export function useAppStore() {
         supabaseService.fetchReports(),
         supabaseService.fetchAgenda()
       ]).then(([dbCallups, dbTrainings, dbReports, dbAgenda]) => {
-        if (dbCallups.length > 0) memoryCallups = dbCallups;
-        if (dbTrainings.length > 0) memoryTrainings = dbTrainings;
+        if (dbCallups.length > 0) {
+          const realCallups = dbCallups.filter((c) => !isSeedDummyCallup(c));
+          memoryCallups = realCallups;
+          persistCallups();
+        }
+        if (dbTrainings.length > 0) {
+          const realTrainings = dbTrainings.filter((t) => !isSeedDummyTraining(t));
+          memoryTrainings = realTrainings;
+        }
         if (dbReports.length > 0) memoryReports = dbReports;
 
         if (dbAgenda.length > 0) {
@@ -452,6 +464,17 @@ export function useAppStore() {
     memoryTrainings = [created, ...memoryTrainings];
     notify();
     return created;
+  };
+
+  const deleteCallup = (id: string) => {
+    memoryCallups = memoryCallups.filter((c) => c.id !== id);
+    persistCallups();
+    notify();
+  };
+
+  const deleteTraining = (id: string) => {
+    memoryTrainings = memoryTrainings.filter((t) => t.id !== id);
+    notify();
   };
 
   const createReport = (data: Partial<PlayerReport>) => {
@@ -658,8 +681,10 @@ export function useAppStore() {
     updatePlayer,
     createCallup,
     updateCallup,
+    deleteCallup,
     addPlayersToCallup,
     createTraining,
+    deleteTraining,
     createReport,
     addToAgenda,
     removeFromAgenda,

@@ -65,12 +65,34 @@ export const Training: React.FC = () => {
       {/* Grid de Sesiones */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
-          {trainings.map((session) => (
-            <Card key={session.id} className="p-6 space-y-4 bg-white border border-slate-200/90 shadow-sm">
-              <div className="flex items-start justify-between">
-                <div>
-                  <Badge variant="success">Entrenament Tàctic</Badge>
-                  <h3 className="text-lg font-black text-[#061338] mt-2">{session.title}</h3>
+          {trainings.length === 0 ? (
+            <Card className="p-12 text-center bg-white border border-dashed border-slate-200 shadow-sm space-y-3">
+              <div className="w-14 h-14 rounded-full bg-emerald-50 text-emerald-600 mx-auto flex items-center justify-center">
+                <Dumbbell className="w-7 h-7" />
+              </div>
+              <h3 className="text-base font-black text-slate-800 uppercase tracking-wide">
+                Sense entrenaments programats
+              </h3>
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                No hi ha cap sessió d'entrenament planificada. Fes clic a <strong>"+ Nou Entrenament"</strong> per programar la primera sessió de la selecció.
+              </p>
+              <div className="pt-2">
+                <button
+                  onClick={() => setIsModalOpen(true)}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-md inline-flex items-center gap-2 transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Programar Nou Entrenament</span>
+                </button>
+              </div>
+            </Card>
+          ) : (
+            trainings.map((session) => (
+              <Card key={session.id} className="p-6 space-y-4 bg-white border border-slate-200/90 shadow-sm">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <Badge variant="success">Entrenament Tàctic</Badge>
+                    <h3 className="text-lg font-black text-[#061338] mt-2">{session.title}</h3>
                   <p className="text-xs text-slate-500 font-semibold flex items-center gap-1.5 mt-1">
                     <Calendar className="w-3.5 h-3.5 text-emerald-600" />
                     {new Date(session.start_time).toLocaleDateString('ca-ES')} • 18:00h - 20:00h
@@ -136,7 +158,7 @@ export const Training: React.FC = () => {
                 })()}
               </div>
             </Card>
-          ))}
+          )))}
         </div>
 
         {/* Ejercicios Recomendados / Biblioteca */}

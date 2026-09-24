@@ -7,14 +7,11 @@ import {
   Calendar,
   ArrowUpRight,
   MapPin,
-  ChevronLeft,
-  ChevronRight,
   Search
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
-import { CustomSelect } from '../../components/ui/Select';
 import { useAppStore } from '../../hooks/useAppStore';
 
 export const Dashboard: React.FC = () => {
@@ -28,7 +25,7 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* 1. Header Banner FFCV (Idéntico al de la imagen FFCV) */}
+      {/* 1. Header Banner FFCV */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#061338] via-[#002568] to-[#003db3] p-6 md:p-8 text-white shadow-xl">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
@@ -43,7 +40,7 @@ export const Dashboard: React.FC = () => {
             </p>
           </div>
 
-          {/* Search bar inside banner like FFCV */}
+          {/* Search bar inside banner */}
           <div className="w-full md:w-72 relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
@@ -63,71 +60,24 @@ export const Dashboard: React.FC = () => {
         />
       </div>
 
-      {/* 2. Filtros de Selección Estilo FFCV (Temporada, Modalidad, Competición, Grupo) */}
-      <Card className="p-4 sm:p-5 md:p-6 bg-white border border-slate-200/80 rounded-2xl shadow-sm space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-          <CustomSelect
-            label="TEMPORADA"
-            value="2026-2027"
-            onChange={() => {}}
-            options={['2026-2027', '2025-2026']}
-          />
-
-          <CustomSelect
-            label="MODALIDAD"
-            value="MASCULÍ F11"
-            onChange={() => {}}
-            options={['MASCULÍ F11', 'FEMENÍ F11']}
-          />
-
-          <CustomSelect
-            label="COMPETICIÓ"
-            value="Primera FFCV Sub-16"
-            onChange={() => {}}
-            options={['Primera FFCV Sub-16', 'Preferent Sub-14']}
-          />
-
-          <CustomSelect
-            label="GRUPO"
-            value="Grup - 1 (Castelló)"
-            onChange={() => {}}
-            options={['Grup - 1 (Castelló)']}
-          />
-        </div>
-
-        {/* Date Selector Pills (Idénticos a FFCV) */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
-          <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1">
-            <button className="w-8 h-8 rounded-full bg-[#ff6600] text-white flex items-center justify-center shrink-0 shadow-md">
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button className="px-4 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold shrink-0">
-              09-09-2026
-            </button>
-            <button className="px-4 py-1.5 rounded-full bg-[#061338] text-white text-xs font-bold shrink-0 shadow-md">
-              16-09-2026
-            </button>
-            <button className="w-8 h-8 rounded-full bg-[#ff6600] text-white flex items-center justify-center shrink-0 shadow-md">
-              <ChevronRight className="w-4 h-4" />
-            </button>
+      {/* 2. Título de Sección y Cards de Jugadores / Sanciones */}
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-2">
+          <div>
+            <h2 className="text-lg font-black text-[#061338] tracking-wide uppercase">
+              JUGADORS OBSERVATS I CITATS PER CLUBS
+            </h2>
+            <p className="text-xs font-semibold text-slate-500">
+              Seguiment prioritari de candidats i seleccionats territorials
+            </p>
           </div>
-
           <Link
             to="/convocatorias"
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-[#ff6600] hover:bg-orange-600 text-white text-xs font-black uppercase tracking-wider rounded-full shadow-md transition-all shrink-0"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-[#ff6600] hover:bg-orange-600 text-white text-xs font-black uppercase tracking-wider rounded-xl shadow-md transition-all self-start sm:self-auto"
           >
-            <ShieldAlert className="w-4 h-4" /> Nova Convocatòria
+            <ShieldAlert className="w-4 h-4" />
+            <span>Nova Convocatòria</span>
           </Link>
-        </div>
-      </Card>
-
-      {/* 3. Título de Sección y Cards de Jugadores / Sanciones Estilo FFCV */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-          <h2 className="text-lg font-black text-[#061338] tracking-wide uppercase">
-            JUGADORS OBSERVATS I CITATS PER CLUBS
-          </h2>
-          <span className="text-xs font-bold text-slate-500">Actualitzat: Dimecres, 16 de setembre de 2026</span>
         </div>
 
         {/* Grid de Cards de Equipos y Jugadores estilo FFCV */}
@@ -216,54 +166,70 @@ export const Dashboard: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-            {nextCallup && (
-              <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200/80 rounded-2xl">
-                <div className="flex items-center gap-3.5">
-                  <div className="p-3 bg-[#002568] text-white rounded-2xl shrink-0 shadow-md">
-                    <ShieldAlert className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-black text-[#ff6600] uppercase tracking-wider block">
-                      CONVOCATÒRIA OFICIAL
-                    </span>
-                    <h4 className="text-sm font-black text-slate-900">{nextCallup.title}</h4>
-                    <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
-                      <MapPin className="w-3.5 h-3.5 text-slate-400" /> {nextCallup.location}
-                    </p>
-                  </div>
+            {!nextCallup && !nextTraining ? (
+              <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl space-y-2">
+                <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center">
+                  <Calendar className="w-5 h-5" />
                 </div>
-                <div className="text-right">
-                  <Badge status={nextCallup.status} />
-                  <p className="text-xs font-bold text-slate-700 mt-1">
-                    {new Date(nextCallup.date).toLocaleDateString('ca-ES')}
-                  </p>
-                </div>
+                <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider">
+                  Sense convocatòries ni entrenaments programats
+                </h4>
+                <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
+                  Actualment no hi ha cap esdeveniment oficial actiu. Pots crear una convocatòria fent clic a <strong>"Nova Convocatòria"</strong>.
+                </p>
               </div>
-            )}
+            ) : (
+              <>
+                {nextCallup && (
+                  <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200/80 rounded-2xl">
+                    <div className="flex items-center gap-3.5">
+                      <div className="p-3 bg-[#002568] text-white rounded-2xl shrink-0 shadow-md">
+                        <ShieldAlert className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-black text-[#ff6600] uppercase tracking-wider block">
+                          CONVOCATÒRIA OFICIAL
+                        </span>
+                        <h4 className="text-sm font-black text-slate-900">{nextCallup.title}</h4>
+                        <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400" /> {nextCallup.location}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <Badge status={nextCallup.status} />
+                      <p className="text-xs font-bold text-slate-700 mt-1">
+                        {new Date(nextCallup.date).toLocaleDateString('ca-ES')}
+                      </p>
+                    </div>
+                  </div>
+                )}
 
-            {nextTraining && (
-              <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200/80 rounded-2xl">
-                <div className="flex items-center gap-3.5">
-                  <div className="p-3 bg-[#061338] text-white rounded-2xl shrink-0 shadow-md">
-                    <Dumbbell className="w-5 h-5" />
+                {nextTraining && (
+                  <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200/80 rounded-2xl">
+                    <div className="flex items-center gap-3.5">
+                      <div className="p-3 bg-[#061338] text-white rounded-2xl shrink-0 shadow-md">
+                        <Dumbbell className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-black text-sky-600 uppercase tracking-wider block">
+                          ENTRENAMENT TÀCTIC
+                        </span>
+                        <h4 className="text-sm font-black text-slate-900">{nextTraining.title}</h4>
+                        <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400" /> {nextTraining.location}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant="success">Programat</Badge>
+                      <p className="text-xs font-bold text-slate-700 mt-1">
+                        {new Date(nextTraining.start_time).toLocaleDateString('ca-ES')}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-[10px] font-black text-sky-600 uppercase tracking-wider block">
-                      ENTRENAMENT TÀCTIC
-                    </span>
-                    <h4 className="text-sm font-black text-slate-900">{nextTraining.title}</h4>
-                    <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
-                      <MapPin className="w-3.5 h-3.5 text-slate-400" /> {nextTraining.location}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <Badge variant="success">Programat</Badge>
-                  <p className="text-xs font-bold text-slate-700 mt-1">
-                    {new Date(nextTraining.start_time).toLocaleDateString('ca-ES')}
-                  </p>
-                </div>
-              </div>
+                )}
+              </>
             )}
           </div>
         </Card>

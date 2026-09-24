@@ -1,4 +1,4 @@
-[
+export const scrapedPlayers = [
   {
     "id": "ffcv-p-9838290",
     "ffcv_player_id": "9838290",
@@ -49833,4 +49833,4 @@
     "source_url": "https://ffcv.es/competiciones/jugadores/jugador.php?codigo=9826409&cod_competicion=905431912&cod_grupo=905431914&cod_temporada=22",
     "scraped_at": "2026-09-23T15:26:19.367Z"
   }
-]
+];

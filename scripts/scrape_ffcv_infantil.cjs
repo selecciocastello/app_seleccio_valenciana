@@ -97,45 +97,120 @@ function parseTime(timeStr) {
 }
 
 /**
- * Determina si un jugador es "Infantil 1er año", "Infantil 2º año" o "Desconocido"
- * según el historial de la temporada anterior (2025-2026).
+ * Comprueba si una categoría corresponde estrictamente a "Alevín 1er. Año" / "Aleví 1r Any"
+ */
+function isAlevin1erAno(categoria) {
+  if (!categoria) return false;
+  const cat = categoria.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+  const isAlevin = cat.includes('alevin') || cat.includes('alevi');
+  if (!isAlevin) return false;
+
+  const is1st =
+    cat.includes('1er') ||
+    cat.includes('1r') ||
+    cat.includes('primer') ||
+    cat.includes('1.er') ||
+    /alevi[n]?\s*(de\s*)?1[ºªer\.]*\s*a[nñ]o/i.test(cat) ||
+    /alevi[n]?\s*(de\s*)?1[r\.]*\s*any/i.test(cat);
+
+  const is2nd =
+    cat.includes('2o') ||
+    cat.includes('2n') ||
+    cat.includes('segund') ||
+    cat.includes('2º') ||
+    cat.includes('2.');
+
+  return is1st && !is2nd;
+}
+
+/**
+ * Comprueba si una categoría corresponde a "Alevín 2º. Año" o Aleví genérico (no 1er año)
+ */
+function isAlevin2oAno(categoria) {
+  if (!categoria) return false;
+  const cat = categoria.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+  const isAlevin = cat.includes('alevin') || cat.includes('alevi');
+  if (!isAlevin) return false;
+
+  const is2nd =
+    cat.includes('2o') ||
+    cat.includes('2n') ||
+    cat.includes('segund') ||
+    cat.includes('2º') ||
+    cat.includes('2.') ||
+    /alevi[n]?\s*(de\s*)?2[ºªo\.]*\s*a[nñ]o/i.test(cat) ||
+    /alevi[n]?\s*(de\s*)?2[n\.]*\s*any/i.test(cat);
+
+  const is1st =
+    cat.includes('1er') ||
+    cat.includes('1r') ||
+    cat.includes('primer') ||
+    cat.includes('1.er');
+
+  return is2nd || !is1st;
+}
+
+/**
+ * Determina si un jugador es "Infantil 1er año", "Infantil 2º año" o "Alevín 2º año"
+ * según las reglas federativas:
+ *
+ * 1. Si en la temporada 2025-2026 figura como "Alevín 1er. Año"
+ *    -> el jugador es "Alevín 2º año".
+ * 2. Infantil 1er año:
+ *    - Si en la temporada 2025-2026 figura como "Alevín 2º. Año" (o Alevín genérico).
+ *    - O si en la temporada 2024-2025 (2 temporadas anteriores) figura como "Alevín 1er. Año".
+ * 3. Infantil 2º año:
+ *    - Si en la temporada 2025-2026 figura en "Infantil" o "Cadete" (y no cumplió la condición de Alevín 1er año en 24-25).
+ * 4. Fallback por edad federativa:
+ *    - <= 11 años -> Alevín 2º año
+ *    - 12 años -> Infantil 1er año
+ *    - >= 13 años -> Infantil 2º año
  */
 function calculateInfantilYear(history, age) {
   if (history && Array.isArray(history) && history.length > 0) {
-    // Filtrar todas las temporadas anteriores a la actual (2026-2027)
-    const prevSeasons = history.filter(h => {
+    const season2425 = history.find((h) => {
       const t = (h.temporada || '').toLowerCase().replace(/\s+/g, '');
-      return !t.startsWith('2026-2027') && !t.startsWith('26-27') && !t.startsWith('2026/2027');
+      return t.startsWith('2024-2025') || t.startsWith('24-25') || t.startsWith('2024/2025');
     });
 
-    if (prevSeasons.length > 0) {
-      const allPrevCategories = prevSeasons.map(h =>
-        (h.categoria || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').trim()
-      );
+    const season2526 = history.find((h) => {
+      const t = (h.temporada || '').toLowerCase().replace(/\s+/g, '');
+      return t.startsWith('2025-2026') || t.startsWith('25-26') || t.startsWith('2025/2026');
+    });
 
-      // Regla FFCV: Si en la temporada anterior aparece Cadete o Infantil -> es Infantil 2º año
-      const hasCadeteOrInfantil = allPrevCategories.some(cat =>
-        cat.includes('cadet') || cat.includes('infantil')
-      );
-      if (hasCadeteOrInfantil) {
+    // 1. Si en la temporada 2025-2026 era Alevín 1er año -> actualmente es Alevín 2º año
+    if (season2526 && isAlevin1erAno(season2526.categoria)) {
+      return 'Alevín 2º año';
+    }
+
+    // 2. Infantil 1er año:
+    // - Si en 25-26 era Alevín 2º año (o Alevín genérico)
+    // - O si en 24-25 era Alevín 1er año
+    if (season2526 && isAlevin2oAno(season2526.categoria)) {
+      return 'Infantil 1er año';
+    }
+    if (season2425 && isAlevin1erAno(season2425.categoria)) {
+      return 'Infantil 1er año';
+    }
+
+    // 3. Infantil 2º año:
+    // - Si en 25-26 ya militaba en Infantil o Cadete
+    if (season2526) {
+      const cat2526 = (season2526.categoria || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+      if (cat2526.includes('infantil') || cat2526.includes('cadet')) {
         return 'Infantil 2º año';
-      }
-
-      // Si en la temporada anterior era Alevín (Aleví) -> es Infantil 1er año
-      const hasAlevin = allPrevCategories.some(cat =>
-        cat.includes('alevin') || cat.includes('alevi')
-      );
-      if (hasAlevin) {
-        return 'Infantil 1er año';
       }
     }
   }
 
-  // Fallback por edad federativa si está disponible
   if (typeof age === 'number' && !isNaN(age)) {
-    if (age >= 13) return 'Infantil 2º año';
+    if (age <= 11) return 'Alevín 2º año';
     if (age === 12) return 'Infantil 1er año';
+    if (age >= 13) return 'Infantil 2º año';
   }
+
+  return 'Desconocido';
+}
 
   return 'Desconocido';
 }

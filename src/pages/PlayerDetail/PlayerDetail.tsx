@@ -1170,14 +1170,24 @@ export const PlayerDetail: React.FC = () => {
                   {prevSeason ? (
                     <>
                       A la temporada anterior (<strong className="text-blue-950 font-black">2025-2026</strong>) va militar a <strong className="text-blue-950 font-bold">{prevSeason.equipo}</strong> en la categoria <strong className="text-blue-950 font-bold">{prevSeason.categoria}</strong>.{' '}
-                      {player.infantil_year === 'Infantil 1er año'
-                        ? 'En haver competit com a Aleví 2n any a la 25/26, li correspon la categoria d\'Infantil de 1er any per a la 26/27.'
-                        : (player.infantil_year === 'Infantil 2º año'
-                          ? 'En haver competit ja en categoria Infantil a la 25/26, li correspon la categoria d\'Infantil de 2n any per a la 26/27.'
-                          : 'Determinació basada en el registre federatiu oficial.')}
+                      {player.infantil_year === 'Alevín 2º año'
+                        ? 'En haver competit com a Aleví de 1er any a la 2025-2026, li correspon la categoria d\'Aleví de 2n any per a la temporada 2026/2027.'
+                        : (player.infantil_year === 'Infantil 1er año'
+                          ? 'En haver competit com a Aleví 2n any a la 25/26 o Aleví 1er any a la 24/25, li correspon la condició d\'Infantil de 1er any per a la temporada 2026/2027.'
+                          : (player.infantil_year === 'Infantil 2º año'
+                            ? 'En haver competit ja en categoria Infantil / Cadet, li correspon la categoria d\'Infantil de 2n any per a la temporada 2026/2027.'
+                            : 'Determinació basada en el registre federatiu oficial.'))}
                     </>
                   ) : (
-                    'No consta registre federatiu de la temporada 2025-2026 per a aquest jugador en el seu historial, per la qual cosa es classifica com a Desconegut.'
+                    <>
+                      {player.infantil_year === 'Alevín 2º año'
+                        ? 'Classificat com a Aleví de 2n any segons el registre federatiu oficial.'
+                        : (player.infantil_year === 'Infantil 1er año'
+                          ? 'Classificat com a Infantil de 1er any (Generació 2014) segons la seva trajectòria federativa oficial.'
+                          : (player.infantil_year === 'Infantil 2º año'
+                            ? 'Classificat com a Infantil de 2n any (Generació 2013) segons la seva trajectòria federativa oficial.'
+                            : 'No consta registre federatiu anterior per a aquest jugador en el seu historial, per la qual cosa es classifica com a Desconegut.'))}
+                    </>
                   )}
                 </p>
               </div>

@@ -91,7 +91,7 @@ export interface Season {
   is_current: boolean;
 }
 
-export type InfantilYear = 'Infantil 1er año' | 'Infantil 2º año' | 'Desconocido';
+export type InfantilYear = 'Infantil 1er año' | 'Infantil 2º año' | 'Alevín 2º año' | 'Desconocido';
 
 export interface PlayerHistoryItem {
   temporada: string;

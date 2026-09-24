@@ -1,9 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import {
   Trophy,
   Star,
-  Users,
   Shield,
   Plus,
   CheckSquare,
@@ -16,21 +15,17 @@ import {
   Building2,
   CheckCircle2,
   ChevronRight,
-  UserCheck,
-  ShieldAlert,
-  ArrowRight,
-  ExternalLink
+  ShieldAlert
 } from 'lucide-react';
 import clsx from 'clsx';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { JerseyBadge } from '../../components/ui/JerseyBadge';
 import { Modal } from '../../components/ui/Modal';
-import { CustomSelect } from '../../components/ui/Select';
 import { StarRating } from '../../components/ui/StarRating';
 import { useAppStore } from '../../hooks/useAppStore';
 import { useToast } from '../../contexts/ToastContext';
-import { PLAYER_POSITIONS, type Player, type PlayerStatus, type Callup } from '../../types/models';
+import type { Player } from '../../types/models';
 
 type GroupByMode = 'position' | 'team' | 'none';
 type StatusFilter = 'all' | 'Preseleccionado' | 'Seleccionado' | 'all_pool';
@@ -39,7 +34,6 @@ interface PositionGroup {
   id: string;
   name: string;
   short: string;
-  iconColor: string;
   badgeClass: string;
   players: Player[];
 }
@@ -52,7 +46,6 @@ interface TeamGroup {
 }
 
 export const SelectedPlayers: React.FC = () => {
-  const navigate = useNavigate();
   const { players, callups, updatePlayer, addPlayersToCallup, createCallup } = useAppStore();
   const { showToast } = useToast();
 
@@ -165,7 +158,6 @@ export const SelectedPlayers: React.FC = () => {
         id: 'porteria',
         name: 'Porteria',
         short: 'POR',
-        iconColor: 'text-amber-500',
         badgeClass: 'bg-amber-100 text-amber-800 border-amber-300',
         players: porters
       },
@@ -173,7 +165,6 @@ export const SelectedPlayers: React.FC = () => {
         id: 'defensa',
         name: 'Línia Defensiva (Centrals i Laterals)',
         short: 'DEF',
-        iconColor: 'text-blue-500',
         badgeClass: 'bg-blue-100 text-blue-800 border-blue-300',
         players: defenses
       },
@@ -181,7 +172,6 @@ export const SelectedPlayers: React.FC = () => {
         id: 'migcamp',
         name: 'Mig del Camp (Pivots i Mitjos)',
         short: 'MIG',
-        iconColor: 'text-emerald-500',
         badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300',
         players: migs
       },
@@ -189,7 +179,6 @@ export const SelectedPlayers: React.FC = () => {
         id: 'atac',
         name: 'Atac i Davantera (Extrems i Davanters)',
         short: 'DAV',
-        iconColor: 'text-orange-500',
         badgeClass: 'bg-orange-100 text-orange-800 border-orange-300',
         players: davanters
       }
@@ -200,7 +189,6 @@ export const SelectedPlayers: React.FC = () => {
         id: 'sense_posicio',
         name: 'Sense Posició Definida',
         short: 'PEND',
-        iconColor: 'text-slate-400',
         badgeClass: 'bg-slate-100 text-slate-700 border-slate-300',
         players: sensePos
       });
@@ -260,12 +248,6 @@ export const SelectedPlayers: React.FC = () => {
         : `Valoració de ${player.full_name} restablerta`,
       'success'
     );
-  };
-
-  // Handler de cambio rápido de estado (ej: Candidato -> Preseleccionado con 5 estrellas)
-  const handleStatusChange = (player: Player, newStatus: PlayerStatus) => {
-    updatePlayer(player.id, { status: newStatus });
-    showToast(`Estat de ${player.full_name} canviat a "${newStatus}"`, 'success');
   };
 
   // Handlers de Convocatorias
@@ -628,7 +610,6 @@ export const SelectedPlayers: React.FC = () => {
                           isSelected={selectedPlayerIds.includes(player.id)}
                           onToggleSelect={() => toggleSelectPlayer(player.id)}
                           onRatingChange={(r) => handleRatingChange(player, r)}
-                          onStatusChange={(s) => handleStatusChange(player, s)}
                         />
                       ))}
                     </div>
@@ -695,7 +676,6 @@ export const SelectedPlayers: React.FC = () => {
                           isSelected={selectedPlayerIds.includes(player.id)}
                           onToggleSelect={() => toggleSelectPlayer(player.id)}
                           onRatingChange={(r) => handleRatingChange(player, r)}
-                          onStatusChange={(s) => handleStatusChange(player, s)}
                         />
                       ))}
                     </div>
@@ -715,7 +695,6 @@ export const SelectedPlayers: React.FC = () => {
                   isSelected={selectedPlayerIds.includes(player.id)}
                   onToggleSelect={() => toggleSelectPlayer(player.id)}
                   onRatingChange={(r) => handleRatingChange(player, r)}
-                  onStatusChange={(s) => handleStatusChange(player, s)}
                 />
               ))}
             </div>
@@ -974,15 +953,13 @@ interface PlayerCardInteractiveProps {
   isSelected: boolean;
   onToggleSelect: () => void;
   onRatingChange: (newRating: number) => void;
-  onStatusChange: (newStatus: PlayerStatus) => void;
 }
 
 const PlayerCardInteractive: React.FC<PlayerCardInteractiveProps> = ({
   player,
   isSelected,
   onToggleSelect,
-  onRatingChange,
-  onStatusChange
+  onRatingChange
 }) => {
   const currentPos = player.position && player.position !== 'Candidato' ? player.position : 'Sense definir';
   const stats = {
@@ -1065,7 +1042,7 @@ const PlayerCardInteractive: React.FC<PlayerCardInteractiveProps> = ({
                 }}
               />
             ) : (
-              <Shield className="w-3.5 h-3.5 text-[#ff6600] shrink-0" />
+              <Shield className="w-3.5 h-3.5 text-[#ff6600]" />
             )}
             <span className="truncate">{player.team?.name || 'Sense equip'}</span>
           </div>

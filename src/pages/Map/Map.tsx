@@ -200,9 +200,6 @@ export const MatchMap: React.FC = () => {
 
       bounds.extend([lat, lng]);
 
-      const fieldName = matchesAtLocation[0].field_name || 'Camp Municipal';
-      const shortField = fieldName.replace(/Campo\s*\d+|F-11|Castellón|Vila-real|Campo\s*[A-Z]/gi, '').trim().slice(0, 18);
-
       // Icono personalizado: escut sense fons + badges (roig = 2n any, verd = 1r any)
       const crestHtml = (crestUrl: string | undefined, teamName: string | undefined) => {
         const breakdown = teamName ? getTeamPlayersBreakdown(teamName) : { secondYear: 0, firstYear: 0 };

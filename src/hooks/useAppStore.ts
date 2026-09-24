@@ -4,7 +4,6 @@ import { supabaseService } from '../services/supabaseService';
 import { calculateInfantilYear } from '../utils/infantilYear';
 import { cacheGet, cacheSet } from '../utils/dataCache';
 
-const INITIAL_CALLUPS: Callup[] = [];
 const INITIAL_TRAININGS: TrainingSession[] = [];
 const INITIAL_REPORTS: PlayerReport[] = [];
 

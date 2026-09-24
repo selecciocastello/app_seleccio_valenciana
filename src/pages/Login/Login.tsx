@@ -15,7 +15,7 @@ export const Login: React.FC = () => {
   const { showToast } = useToast();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
@@ -24,7 +24,7 @@ export const Login: React.FC = () => {
       return;
     }
 
-    const res = login(email, password);
+    const res = await login(email, password);
 
     if (res.success) {
       showToast('Sessió iniciada correctament', 'success');

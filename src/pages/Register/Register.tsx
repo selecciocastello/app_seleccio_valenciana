@@ -16,7 +16,7 @@ export const Register: React.FC = () => {
   const { showToast } = useToast();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
@@ -35,7 +35,7 @@ export const Register: React.FC = () => {
       return;
     }
 
-    const res = register({
+    const res = await register({
       email,
       password,
       full_name: fullName,

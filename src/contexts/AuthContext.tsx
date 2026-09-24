@@ -15,9 +15,9 @@ interface AuthContextType {
   isLoading: boolean;
   users: Profile[];
   appSettings: AppSettings;
-  login: (email: string, password?: string) => { success: boolean; error?: string };
+  login: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   loginDemo: (role: 'admin' | 'seleccionador') => void;
-  register: (data: RegisterData) => { success: boolean; error?: string };
+  register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   addUser: (data: RegisterData & { role?: 'admin' | 'seleccionador' }) => Profile;
   updateUser: (userId: string, data: Partial<Profile>) => void;
@@ -31,7 +31,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // Lista inicial de usuarios predeterminados oficiales
 const INITIAL_USERS: Profile[] = [
   {
-    id: '00000000-0000-0000-0000-000000000001',
+    id: 'd5bfd350-8478-40a5-bda9-80bfc7e953bb',
     email: 'seleccio.castello.2026@gmail.com',
     password: 'castello.2026',
     full_name: 'Administrador FFCV Castelló',
@@ -41,8 +41,8 @@ const INITIAL_USERS: Profile[] = [
     last_login: new Date().toLocaleDateString('es-ES') + ' 16:45h'
   },
   {
-    id: '00000000-0000-0000-0000-000000000002',
-    email: 'victorzandalinas@selecciocastello.val',
+    id: 'bb640183-cd48-47ce-aa4d-730becd6e747',
+    email: 'victorzanpra@gmail.com',
     password: 'castello.2026',
     full_name: 'Víctor Zandalinas',
     category_assigned: 'Infantil',
@@ -50,6 +50,17 @@ const INITIAL_USERS: Profile[] = [
     is_active: true,
     created_at: new Date().toISOString(),
     last_login: new Date().toLocaleDateString('es-ES') + ' 10:15h'
+  },
+  {
+    id: 'fea9aa09-c9fd-489f-9bf1-61c64c1b1bfe',
+    email: 'rtenacs@hotmail.com',
+    password: 'castello.2026',
+    full_name: 'Raúl Tena',
+    category_assigned: 'Cadet',
+    role: { id: 'r2', name: 'seleccionador', description: 'Seleccionador Cadet FFCV' },
+    is_active: true,
+    created_at: new Date().toISOString(),
+    last_login: new Date().toLocaleDateString('es-ES') + ' 09:30h'
   }
 ];
 
@@ -70,20 +81,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     try {
       const parsed: Profile[] = JSON.parse(savedUsers);
-      // Filtrar usuarios de prueba antiguos ("Vicent Ribes", "Carles Beltrán", "Marc Soler")
+      // Filtrar usuarios de prueba antiguos ("Vicent Ribes", "Carles Beltrán", "Marc Soler", emails antiguos ficticios)
       const cleaned = parsed.filter(
         (u) =>
           u.full_name !== 'Vicent Ribes' &&
           u.full_name !== 'Carles Beltrán' &&
-          u.full_name !== 'Marc Soler'
+          u.full_name !== 'Marc Soler' &&
+          u.email !== 'victorzandalinas@selecciocastello.val'
       );
-      // Asegurar que Administrador y Víctor Zandalinas están presentes
-      if (!cleaned.some((u) => u.email === 'seleccio.castello.2026@gmail.com')) {
-        cleaned.unshift(INITIAL_USERS[0]);
-      }
-      if (!cleaned.some((u) => u.full_name.toLowerCase().includes('zandalinas'))) {
-        cleaned.push(INITIAL_USERS[1]);
-      }
+      // Asegurar que Administrador, Victor y Raul están presentes
+      INITIAL_USERS.forEach((initialUser) => {
+        if (!cleaned.some((u) => u.email.toLowerCase() === initialUser.email.toLowerCase())) {
+          cleaned.push(initialUser);
+        }
+      });
       localStorage.setItem('app_users_db', JSON.stringify(cleaned));
       return cleaned;
     } catch {
@@ -120,16 +131,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange(async (_, session) => {
       if (session?.user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*, role:roles(*)')
-          .eq('id', session.user.id)
-          .single();
+        const meta = session.user.user_metadata || {};
+        const userEmail = session.user.email || '';
+        const roleName = meta.role_name || (userEmail.includes('admin') ? 'admin' : 'seleccionador');
 
-        if (profile) {
-          setUser(profile);
-          localStorage.setItem('auth_user', JSON.stringify(profile));
-        }
+        const activeProfile: Profile = {
+          id: session.user.id,
+          email: userEmail,
+          full_name: meta.full_name || userEmail.split('@')[0],
+          category_assigned: meta.category_assigned || 'Sub-16',
+          role: {
+            id: roleName === 'admin' ? 'r1' : 'r2',
+            name: roleName,
+            description: roleName === 'admin' ? 'Administrador total' : 'Seleccionador del planter'
+          },
+          is_active: true,
+          created_at: session.user.created_at || new Date().toISOString(),
+          last_login: new Date().toLocaleDateString('es-ES') + ' ' + new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+        };
+
+        setUser(activeProfile);
+        localStorage.setItem('auth_user', JSON.stringify(activeProfile));
       }
     });
 
@@ -144,9 +166,81 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('app_users_db', JSON.stringify(newUsers));
   };
 
-  const login = (email: string, password?: string) => {
+  const login = async (email: string, password?: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
     const targetEmail = email.trim().toLowerCase();
+
+    // 1. Intentar autenticación directa en la nube con Supabase Auth
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: targetEmail,
+        password: password || ''
+      });
+
+      if (!authError && authData?.user) {
+        const meta = authData.user.user_metadata || {};
+        const roleName = meta.role_name || (targetEmail.includes('admin') ? 'admin' : 'seleccionador');
+
+        const loggedUser: Profile = {
+          id: authData.user.id,
+          email: authData.user.email || targetEmail,
+          password: password,
+          full_name: meta.full_name || targetEmail.split('@')[0],
+          category_assigned: meta.category_assigned || 'Sub-16',
+          role: {
+            id: roleName === 'admin' ? 'r1' : 'r2',
+            name: roleName,
+            description: roleName === 'admin' ? 'Administrador total' : 'Seleccionador del planter'
+          },
+          is_active: true,
+          created_at: authData.user.created_at || new Date().toISOString(),
+          last_login: new Date().toLocaleDateString('es-ES') + ' ' + new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+        };
+
+        setUser(loggedUser);
+        localStorage.setItem('auth_user', JSON.stringify(loggedUser));
+
+        // Sincronizar en la lista local de usuarios
+        setUsers((prev) => {
+          const exists = prev.some((u) => u.email.toLowerCase() === targetEmail);
+          const next = exists
+            ? prev.map((u) => (u.email.toLowerCase() === targetEmail ? { ...u, ...loggedUser } : u))
+            : [loggedUser, ...prev];
+          localStorage.setItem('app_users_db', JSON.stringify(next));
+          return next;
+        });
+
+        setIsLoading(false);
+        return { success: true };
+      }
+
+      // Si Supabase devuelve error de credenciales explícito
+      if (authError && authError.message.includes('Invalid login credentials')) {
+        // Verificar si existe en la lista local con otra contraseña o modo demo
+        const localMatch = users.find((u) => u.email.toLowerCase() === targetEmail);
+        if (localMatch && localMatch.password === password) {
+          const updatedUser: Profile = {
+            ...localMatch,
+            last_login: new Date().toLocaleDateString('es-ES') + ' ' + new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+          };
+          setUser(updatedUser);
+          localStorage.setItem('auth_user', JSON.stringify(updatedUser));
+          setIsLoading(false);
+          return { success: true };
+        }
+        setIsLoading(false);
+        return { success: false, error: 'Contrasenya o correu electrònic incorrecte.' };
+      }
+
+      if (authError && authError.message.includes('Email not confirmed')) {
+        setIsLoading(false);
+        return { success: false, error: 'El compte està pendent de confirmació.' };
+      }
+    } catch (cloudErr) {
+      console.warn('Supabase auth attempt offline/error, checking local storage:', cloudErr);
+    }
+
+    // 2. Fallback local para usuarios locales / demo
     const foundUser = users.find((u) => u.email.toLowerCase() === targetEmail);
 
     if (!foundUser) {
@@ -190,7 +284,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, 200);
   };
 
-  const register = (data: RegisterData) => {
+  const register = async (data: RegisterData): Promise<{ success: boolean; error?: string }> => {
     if (!appSettings.allowPublicRegistration) {
       return { success: false, error: 'El registre públic de seleccionadors està desactivat actualment.' };
     }
@@ -200,8 +294,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, error: 'Aquest correu electrònic ja està registrat en la plataforma.' };
     }
 
+    setIsLoading(true);
+    let userId: string = crypto.randomUUID();
+
+    // Registrar en Supabase Auth en segundo plano
+    try {
+      const { data: signUpData } = await supabase.auth.signUp({
+        email: emailTrim,
+        password: data.password,
+        options: {
+          data: {
+            full_name: data.full_name.trim(),
+            category_assigned: data.category_assigned || 'Sub-16',
+            role_name: 'seleccionador'
+          }
+        }
+      });
+      if (signUpData?.user?.id) {
+        userId = signUpData.user.id;
+      }
+    } catch (err) {
+      console.warn('Supabase Auth signUp:', err);
+    }
+
     const newUser: Profile = {
-      id: crypto.randomUUID(),
+      id: userId,
       email: emailTrim,
       password: data.password,
       full_name: data.full_name.trim(),
@@ -212,25 +329,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       last_login: new Date().toLocaleDateString('es-ES') + ' ' + new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
     };
 
-    // Registrar en Supabase Auth en segundo plano
-    supabase.auth.signUp({
-      email: emailTrim,
-      password: data.password,
-      options: {
-        data: {
-          full_name: data.full_name.trim(),
-          category_assigned: data.category_assigned || 'Sub-16',
-          role_name: 'seleccionador'
-        }
-      }
-    }).catch((err) => {
-      console.warn('Supabase Auth signUp:', err);
-    });
-
-    const newUsersList = [newUser, ...users];
+    const newUsersList = [newUser, ...users.filter((u) => u.email.toLowerCase() !== emailTrim)];
     saveUsers(newUsersList);
     setUser(newUser);
     localStorage.setItem('auth_user', JSON.stringify(newUser));
+    setIsLoading(false);
 
     return { success: true };
   };

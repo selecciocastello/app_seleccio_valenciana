@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { Profile, AppSettings } from '../types/models';
-import { supabase } from '../config/supabaseClient';
+import { supabase, isSupabaseConfigured } from '../config/supabaseClient';
 
 interface RegisterData {
   email: string;
@@ -170,74 +170,76 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     const targetEmail = email.trim().toLowerCase();
 
-    // 1. Intentar autenticación directa en la nube con Supabase Auth
-    try {
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: targetEmail,
-        password: password || ''
-      });
-
-      if (!authError && authData?.user) {
-        const meta = authData.user.user_metadata || {};
-        const roleName = meta.role_name || (targetEmail.includes('admin') ? 'admin' : 'seleccionador');
-
-        const loggedUser: Profile = {
-          id: authData.user.id,
-          email: authData.user.email || targetEmail,
-          password: password,
-          full_name: meta.full_name || targetEmail.split('@')[0],
-          category_assigned: meta.category_assigned || 'Sub-16',
-          role: {
-            id: roleName === 'admin' ? 'r1' : 'r2',
-            name: roleName,
-            description: roleName === 'admin' ? 'Administrador total' : 'Seleccionador del planter'
-          },
-          is_active: true,
-          created_at: authData.user.created_at || new Date().toISOString(),
-          last_login: new Date().toLocaleDateString('es-ES') + ' ' + new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
-        };
-
-        setUser(loggedUser);
-        localStorage.setItem('auth_user', JSON.stringify(loggedUser));
-
-        // Sincronizar en la lista local de usuarios
-        setUsers((prev) => {
-          const exists = prev.some((u) => u.email.toLowerCase() === targetEmail);
-          const next = exists
-            ? prev.map((u) => (u.email.toLowerCase() === targetEmail ? { ...u, ...loggedUser } : u))
-            : [loggedUser, ...prev];
-          localStorage.setItem('app_users_db', JSON.stringify(next));
-          return next;
+    // 1. Intentar autenticación directa en la nube con Supabase Auth (solo si está configurado)
+    if (isSupabaseConfigured()) {
+      try {
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email: targetEmail,
+          password: password || ''
         });
 
-        setIsLoading(false);
-        return { success: true };
-      }
+        if (!authError && authData?.user) {
+          const meta = authData.user.user_metadata || {};
+          const roleName = meta.role_name || (targetEmail.includes('admin') ? 'admin' : 'seleccionador');
 
-      // Si Supabase devuelve error de credenciales explícito
-      if (authError && authError.message.includes('Invalid login credentials')) {
-        // Verificar si existe en la lista local con otra contraseña o modo demo
-        const localMatch = users.find((u) => u.email.toLowerCase() === targetEmail);
-        if (localMatch && localMatch.password === password) {
-          const updatedUser: Profile = {
-            ...localMatch,
+          const loggedUser: Profile = {
+            id: authData.user.id,
+            email: authData.user.email || targetEmail,
+            password: password,
+            full_name: meta.full_name || targetEmail.split('@')[0],
+            category_assigned: meta.category_assigned || 'Sub-16',
+            role: {
+              id: roleName === 'admin' ? 'r1' : 'r2',
+              name: roleName,
+              description: roleName === 'admin' ? 'Administrador total' : 'Seleccionador del planter'
+            },
+            is_active: true,
+            created_at: authData.user.created_at || new Date().toISOString(),
             last_login: new Date().toLocaleDateString('es-ES') + ' ' + new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
           };
-          setUser(updatedUser);
-          localStorage.setItem('auth_user', JSON.stringify(updatedUser));
+
+          setUser(loggedUser);
+          localStorage.setItem('auth_user', JSON.stringify(loggedUser));
+
+          // Sincronizar en la lista local de usuarios
+          setUsers((prev) => {
+            const exists = prev.some((u) => u.email.toLowerCase() === targetEmail);
+            const next = exists
+              ? prev.map((u) => (u.email.toLowerCase() === targetEmail ? { ...u, ...loggedUser } : u))
+              : [loggedUser, ...prev];
+            localStorage.setItem('app_users_db', JSON.stringify(next));
+            return next;
+          });
+
           setIsLoading(false);
           return { success: true };
         }
-        setIsLoading(false);
-        return { success: false, error: 'Contrasenya o correu electrònic incorrecte.' };
-      }
 
-      if (authError && authError.message.includes('Email not confirmed')) {
-        setIsLoading(false);
-        return { success: false, error: 'El compte està pendent de confirmació.' };
+        // Si Supabase devuelve error de credenciales explícito
+        if (authError && authError.message.includes('Invalid login credentials')) {
+          // Verificar si existe en la lista local con otra contraseña o modo demo
+          const localMatch = users.find((u) => u.email.toLowerCase() === targetEmail);
+          if (localMatch && localMatch.password === password) {
+            const updatedUser: Profile = {
+              ...localMatch,
+              last_login: new Date().toLocaleDateString('es-ES') + ' ' + new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+            };
+            setUser(updatedUser);
+            localStorage.setItem('auth_user', JSON.stringify(updatedUser));
+            setIsLoading(false);
+            return { success: true };
+          }
+          setIsLoading(false);
+          return { success: false, error: 'Contrasenya o correu electrònic incorrecte.' };
+        }
+
+        if (authError && authError.message.includes('Email not confirmed')) {
+          setIsLoading(false);
+          return { success: false, error: 'El compte està pendent de confirmació.' };
+        }
+      } catch (cloudErr) {
+        console.warn('Supabase auth attempt offline/error, checking local storage:', cloudErr);
       }
-    } catch (cloudErr) {
-      console.warn('Supabase auth attempt offline/error, checking local storage:', cloudErr);
     }
 
     // 2. Fallback local para usuarios locales / demo

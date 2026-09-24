@@ -128,6 +128,7 @@ export interface Player {
   category_id?: string;
   category?: Category;
   position?: PlayerPosition;
+  secondary_position?: PlayerPosition;
   dominant_foot?: 'Diestro' | 'Zurdo' | 'Ambidextro';
   team_id?: string;
   team?: Team;
@@ -136,6 +137,7 @@ export interface Player {
   city?: string;
   province?: string;
   status: PlayerStatus;
+  rating?: number; // Valoració tècnica de 1 a 5 estrelles
   sports_data: SportsData;
   notes?: string;
 

@@ -203,20 +203,22 @@ export const MatchMap: React.FC = () => {
       const fieldName = matchesAtLocation[0].field_name || 'Camp Municipal';
       const shortField = fieldName.replace(/Campo\s*\d+|F-11|Castellón|Vila-real|Campo\s*[A-Z]/gi, '').trim().slice(0, 18);
 
-      // Icono personalizado: escut + badges (roig = 2n any, verd = 1r any)
+      // Icono personalizado: escut sense fons + badges (roig = 2n any, verd = 1r any)
       const crestHtml = (crestUrl: string | undefined, teamName: string | undefined) => {
         const breakdown = teamName ? getTeamPlayersBreakdown(teamName) : { secondYear: 0, firstYear: 0 };
-        const badge = (count: number, color: string) =>
+        const badge = (count: number, color: string, style: string) =>
           count > 0
-            ? `<span style="position:absolute; ${color === '#dc2626' ? 'top:-4px; right:-4px;' : 'bottom:-4px; right:-4px;'} background:${color}; color:#fff; font-size:8px; font-weight:900; min-width:12px; height:12px; padding:0 2px; border-radius:999px; display:flex; align-items:center; justify-content:center; border:1px solid #fff; line-height:1; box-shadow:0 1px 2px rgba(0,0,0,0.4);">${count}</span>`
+            ? `<span style="position:absolute; ${style} background:${color}; color:#fff; font-size:8px; font-weight:900; min-width:13px; height:13px; padding:0 2px; border-radius:999px; display:flex; align-items:center; justify-content:center; border:1.5px solid #fff; line-height:1; box-shadow:0 1.5px 3px rgba(0,0,0,0.5); z-index:10;">${count}</span>`
             : '';
         return `
-          <div style="position:relative; width:22px; height:22px; flex-shrink:0;">
-            <div style="width:22px;height:22px;border-radius:50%;background:#fff;border:1.5px solid #061338;display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.2);">
-              ${crestUrl ? `<img src="${crestUrl}" style="width:16px;height:16px;object-fit:contain;" />` : `<span style="font-size:10px;">⚽</span>`}
-            </div>
-            ${badge(breakdown.secondYear, '#dc2626')}
-            ${badge(breakdown.firstYear, '#16a34a')}
+          <div style="position:relative; width:32px; height:32px; flex-shrink:0; display:flex; align-items:center; justify-content:center;">
+            ${
+              crestUrl
+                ? `<img src="${crestUrl}" alt="" style="width:32px; height:32px; object-fit:contain; filter:drop-shadow(0 2px 5px rgba(0,0,0,0.6)); background:transparent;" onerror="this.style.display='none'" />`
+                : `<span style="font-size:16px; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.5));">⚽</span>`
+            }
+            ${badge(breakdown.secondYear, '#dc2626', 'top:-4px; right:-4px;')}
+            ${badge(breakdown.firstYear, '#16a34a', 'bottom:-4px; right:-4px;')}
           </div>
         `;
       };
@@ -229,29 +231,35 @@ export const MatchMap: React.FC = () => {
         const awayCrest = match.away_crest || match.away_team?.crest_url;
         const time = getMatchTime(match);
         markerHtml = `
-          <div style="display:flex; align-items:center; gap:4px; background:#fff; border-radius:999px; padding:3px 6px; box-shadow:0 3px 10px rgba(0,0,0,0.3); border:2px solid #ff6600; cursor:pointer; transform:translate(-50%, -50%); transition:transform 0.15s ease;" class="hover:scale-105">
-            ${crestHtml(homeCrest, match.home_team_name || match.home_team?.name)}
-            <span style="font-size:8.5px; font-weight:900; color:#64748b; margin:0 1px;">vs</span>
-            ${crestHtml(awayCrest, match.away_team_name || match.away_team?.name)}
-            ${time ? `<span style="font-size:8px; font-weight:900; background:#061338; color:#fff; padding:1px 4px; border-radius:999px; margin-left:2px;">${time}h</span>` : ''}
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; transform:translate(-50%, -50%); transition:transform 0.15s ease;" class="hover:scale-110">
+            ${time ? `
+              <span style="background:#061338; color:#ffffff; font-size:9.5px; font-weight:900; padding:1.5px 7px; border-radius:999px; border:1.5px solid #ff6600; box-shadow:0 2px 6px rgba(0,0,0,0.5); margin-bottom:3px; white-space:nowrap; letter-spacing:0.2px;">
+                ${time}h
+              </span>
+            ` : ''}
+            <div style="display:flex; align-items:center; justify-content:center; gap:6px;">
+              ${crestHtml(homeCrest, match.home_team_name || match.home_team?.name)}
+              <div style="width:11px; height:11px; border-radius:50%; background:#ff6600; border:2px solid #ffffff; box-shadow:0 0 0 2px #061338, 0 2px 6px rgba(0,0,0,0.6); flex-shrink:0; z-index:5;"></div>
+              ${crestHtml(awayCrest, match.away_team_name || match.away_team?.name)}
+            </div>
           </div>
         `;
       } else {
-        // Multi-partit al mateix camp: marcador compacte i elegant amb comptador
+        // Multi-partit al mateix camp: comptador centrat a dalt + escuts sense fons i punt al mig
         const count = matchesAtLocation.length;
         const firstMatch = matchesAtLocation[0];
         const homeCrest = firstMatch.home_crest || firstMatch.home_team?.crest_url;
         const awayCrest = firstMatch.away_crest || firstMatch.away_team?.crest_url;
         markerHtml = `
-          <div style="display:flex; align-items:center; gap:6px; background:#061338; color:#fff; border-radius:999px; padding:3px 8px 3px 5px; box-shadow:0 4px 12px rgba(6,19,56,0.5); border:2px solid #ff6600; cursor:pointer; transform:translate(-50%, -50%); transition:transform 0.15s ease;" class="hover:scale-105">
-            <div style="display:flex; align-items:center; gap:-6px;">
-              ${homeCrest ? `<img src="${homeCrest}" style="width:18px;height:18px;object-fit:contain;border-radius:50%;background:#fff;padding:1px;" />` : ''}
-              ${awayCrest ? `<img src="${awayCrest}" style="width:18px;height:18px;object-fit:contain;border-radius:50%;background:#fff;padding:1px;margin-left:-4px;" />` : ''}
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; transform:translate(-50%, -50%); transition:transform 0.15s ease;" class="hover:scale-110">
+            <span style="background:#ff6600; color:#ffffff; font-size:9.5px; font-weight:900; padding:1.5px 7px; border-radius:999px; border:1.5px solid #ffffff; box-shadow:0 2px 6px rgba(0,0,0,0.5); margin-bottom:3px; white-space:nowrap; letter-spacing:0.2px;">
+              ${count} partits
+            </span>
+            <div style="display:flex; align-items:center; justify-content:center; gap:6px;">
+              ${crestHtml(homeCrest, firstMatch.home_team_name || firstMatch.home_team?.name)}
+              <div style="width:11px; height:11px; border-radius:50%; background:#ff6600; border:2px solid #ffffff; box-shadow:0 0 0 2px #061338, 0 2px 6px rgba(0,0,0,0.6); flex-shrink:0; z-index:5;"></div>
+              ${crestHtml(awayCrest, firstMatch.away_team_name || firstMatch.away_team?.name)}
             </div>
-            <div style="display:flex; flex-direction:column; line-height:1.1;">
-              <span style="font-size:8.5px; font-weight:800; color:#f8fafc; max-width:90px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${shortField || 'Camp'}</span>
-            </div>
-            <span style="background:#ff6600; color:#fff; font-size:9px; font-weight:900; padding:1px 6px; border-radius:999px; margin-left:2px; box-shadow:0 1px 3px rgba(0,0,0,0.3);">${count} partits</span>
           </div>
         `;
       }
@@ -261,7 +269,7 @@ export const MatchMap: React.FC = () => {
         html: markerHtml,
         iconSize: [0, 0],
         iconAnchor: [0, 0],
-        popupAnchor: [0, -18]
+        popupAnchor: [0, -28]
       });
 
       const marker = L.marker([lat, lng], { icon }).addTo(map);

@@ -124,21 +124,29 @@ export const Players: React.FC = () => {
       const pName = (p.full_name || '').toLowerCase();
       const pTeam = (p.team?.name || '').toLowerCase();
       const pPos = (p.position || '').toLowerCase();
+      const pSecPos = (p.secondary_position || '').toLowerCase();
 
       const matchesSearch =
         !searchLower ||
         pName.includes(searchLower) ||
         pTeam.includes(searchLower) ||
-        pPos.includes(searchLower);
+        pPos.includes(searchLower) ||
+        pSecPos.includes(searchLower);
 
       const matchesStatus = selectedStatus === 'all' || p.status === selectedStatus;
       const matchesTeam = selectedTeam === 'all' || p.team_id === selectedTeam;
       
       const normalizedPos = normalizePosition(p.position);
-      const isUnassigned = normalizedPos === 'Sense definir';
+      const normalizedSecPos = normalizePosition(p.secondary_position);
+      const isUnassigned = normalizedPos === 'Sense definir' && normalizedSecPos === 'Sense definir';
       const matchesPosition =
         selectedPosition === 'all' ||
-        (selectedPosition === 'unassigned' ? isUnassigned : normalizedPos === selectedPosition || p.position === selectedPosition);
+        (selectedPosition === 'unassigned'
+          ? isUnassigned
+          : normalizedPos === selectedPosition ||
+            p.position === selectedPosition ||
+            normalizedSecPos === selectedPosition ||
+            p.secondary_position === selectedPosition);
 
       const matchesInfantilYear = selectedInfantilYear === 'all' || p.infantil_year === selectedInfantilYear;
 
@@ -443,6 +451,11 @@ export const Players: React.FC = () => {
                         <span className="text-[10px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
                           {player.age ? `${player.age} anys` : '13 anys'}
                         </span>
+                        {player.rating && player.rating > 0 && (
+                          <span className="text-[10px] font-black text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                            ⭐ {player.rating}/5
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -455,7 +468,7 @@ export const Players: React.FC = () => {
                 </div>
 
                 {/* 2. Selector Ràpid de Posició */}
-                <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 space-y-1">
+                <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
                       Posició al camp:
@@ -484,6 +497,14 @@ export const Players: React.FC = () => {
                       </option>
                     ))}
                   </select>
+                  {player.secondary_position && player.secondary_position !== 'Sense definir' && (
+                    <div className="flex items-center gap-1.5 pt-0.5">
+                      <span className="text-[9px] uppercase font-black text-amber-700">Alt:</span>
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                        {player.secondary_position}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* 3. Panell d'Estadístiques FFCV (Partits i Gols com a l'ordinador) */}
@@ -610,7 +631,12 @@ export const Players: React.FC = () => {
                             <span className="text-sm font-black text-[#061338] uppercase group-hover/player:text-[#002568] group-hover/player:underline block truncate max-w-[200px]">
                               {player.full_name}
                             </span>
-                            <div className="flex items-center gap-1.5 mt-0.5">
+                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                              {player.rating && player.rating > 0 && (
+                                <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-black" title={`Valoració: ${player.rating}/5 estrelles`}>
+                                  ⭐ {player.rating}/5
+                                </span>
+                              )}
                               {player.notes && (
                                 <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-bold" title={player.notes}>
                                   📝 Nota
@@ -656,6 +682,13 @@ export const Players: React.FC = () => {
                             </option>
                           ))}
                         </select>
+                        {player.secondary_position && player.secondary_position !== 'Sense definir' && (
+                          <div className="mt-1 flex items-center gap-1">
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 inline-block truncate max-w-[150px]" title={`Posició Alternativa: ${player.secondary_position}`}>
+                              Alt: {player.secondary_position}
+                            </span>
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-3 font-bold text-slate-800 whitespace-nowrap">
                         <div className="flex items-center gap-2">

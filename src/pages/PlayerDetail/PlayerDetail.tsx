@@ -33,6 +33,7 @@ import { CustomSelect } from '../../components/ui/Select';
 import { useAppStore } from '../../hooks/useAppStore';
 import { useToast } from '../../contexts/ToastContext';
 import { JerseyBadge } from '../../components/ui/JerseyBadge';
+import { StarRating } from '../../components/ui/StarRating';
 import { PLAYER_POSITIONS } from '../../types/models';
 
 export const PlayerDetail: React.FC = () => {
@@ -48,6 +49,8 @@ export const PlayerDetail: React.FC = () => {
 
   // Local state for editable fields
   const [positionInput, setPositionInput] = useState(player?.position || '');
+  const [secondaryPositionInput, setSecondaryPositionInput] = useState(player?.secondary_position || '');
+  const [ratingInput, setRatingInput] = useState<number>(player?.rating || 0);
   const [dominantFootInput, setDominantFootInput] = useState(player?.dominant_foot || 'Diestro');
   const [phoneInput, setPhoneInput] = useState(player?.phone || '');
   const [emailInput, setEmailInput] = useState(player?.email || '');
@@ -60,6 +63,8 @@ export const PlayerDetail: React.FC = () => {
   useEffect(() => {
     if (player) {
       setPositionInput(player.position && player.position !== 'Candidato' ? player.position : '');
+      setSecondaryPositionInput(player.secondary_position && player.secondary_position !== 'Sense definir' ? player.secondary_position : '');
+      setRatingInput(player.rating || 0);
       setDominantFootInput(player.dominant_foot || 'Diestro');
       setPhoneInput(player.phone || '');
       setEmailInput(player.email || '');
@@ -95,7 +100,25 @@ export const PlayerDetail: React.FC = () => {
     const finalPos = newPosition === 'Sense definir' ? '' : newPosition;
     setPositionInput(finalPos);
     updatePlayer(player.id, { position: finalPos });
-    showToast(`Posició actualitzada a "${newPosition}"`, 'success');
+    showToast(`Posició principal actualitzada a "${newPosition}"`, 'success');
+  };
+
+  const handleSecondaryPositionChange = (newPosition: string) => {
+    const finalPos = newPosition === 'Sense definir' ? '' : newPosition;
+    setSecondaryPositionInput(finalPos);
+    updatePlayer(player.id, { secondary_position: finalPos });
+    showToast(`Posició alternativa actualitzada a "${newPosition}"`, 'success');
+  };
+
+  const handleRatingChange = (newRating: number) => {
+    setRatingInput(newRating);
+    updatePlayer(player.id, { rating: newRating });
+    showToast(
+      newRating > 0
+        ? `Valoració de ${player.full_name} actualitzada: ${newRating} ${newRating === 1 ? 'estrella' : 'estrelles'} ⭐`
+        : `Valoració de ${player.full_name} restablerta`,
+      'success'
+    );
   };
 
   const handleSaveContactAndNotes = (e: React.FormEvent) => {
@@ -103,6 +126,8 @@ export const PlayerDetail: React.FC = () => {
     setIsSaving(true);
     updatePlayer(player.id, {
       position: positionInput === 'Sense definir' ? '' : positionInput,
+      secondary_position: secondaryPositionInput === 'Sense definir' ? '' : secondaryPositionInput,
+      rating: ratingInput,
       dominant_foot: dominantFootInput as any,
       phone: phoneInput || undefined,
       email: emailInput || undefined,
@@ -114,7 +139,7 @@ export const PlayerDetail: React.FC = () => {
 
     setTimeout(() => {
       setIsSaving(false);
-      showToast('Dades de contacte, posició i comentaris guardats correctament', 'success');
+      showToast('Dades de contacte, posicions, valoració i comentaris guardats correctament', 'success');
     }, 200);
   };
 
@@ -153,6 +178,7 @@ export const PlayerDetail: React.FC = () => {
   };
 
   const currentPosition = normalizePosition(player.position);
+  const currentSecondaryPosition = normalizePosition(player.secondary_position);
 
   const prevSeason = (player.history || []).find((h) => {
     const t = (h.temporada || '').replace(/\s+/g, '');
@@ -176,7 +202,7 @@ export const PlayerDetail: React.FC = () => {
       </div>
 
       {/* Profile Header Card */}
-      <Card className="relative overflow-hidden bg-gradient-to-r from-[#061338] via-[#002568] to-[#003db3] text-white p-6 sm:p-8 border border-blue-900 shadow-xl" gradient>
+      <Card className="relative overflow-visible z-20 bg-gradient-to-r from-[#061338] via-[#002568] to-[#003db3] text-white p-6 sm:p-8 border border-blue-900 shadow-xl" gradient>
         <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-6 relative z-10">
           <div className="flex flex-col sm:flex-row items-center sm:items-start md:items-center gap-5 text-center sm:text-left">
             {/* Foto del Jugador - Neta i sense solapaments */}
@@ -232,9 +258,15 @@ export const PlayerDetail: React.FC = () => {
               </div>
 
               <div className="text-sm font-bold text-sky-200 mt-2 flex items-center justify-center sm:justify-start flex-wrap gap-2">
-                <span className="bg-sky-500/20 px-2.5 py-0.5 rounded-md border border-sky-400/30 text-white font-extrabold">
-                  {currentPosition}
+                <span className="bg-sky-500/20 px-2.5 py-0.5 rounded-md border border-sky-400/30 text-white font-extrabold flex items-center gap-1">
+                  <span>{currentPosition}</span>
                 </span>
+                {currentSecondaryPosition && currentSecondaryPosition !== 'Sense definir' && (
+                  <span className="bg-amber-500/20 px-2.5 py-0.5 rounded-md border border-amber-400/30 text-amber-200 font-extrabold flex items-center gap-1" title="Posició Alternativa">
+                    <span className="text-[10px] uppercase font-black text-amber-300">Alt:</span>
+                    <span>{currentSecondaryPosition}</span>
+                  </span>
+                )}
                 <span className="text-white/40">•</span>
                 <div className="inline-flex items-center gap-1.5">
                   {player.team?.crest_url && (
@@ -268,12 +300,12 @@ export const PlayerDetail: React.FC = () => {
             </div>
           </div>
 
-          {/* Selectores Rápidos de Posición y Estado */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
-            {/* Selector de Posición */}
-            <div className="flex-1 sm:min-w-[170px]">
+          {/* Selectores Rápidos de Posición Principal, Posición Alternativa y Estado */}
+          <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 w-full lg:w-auto">
+            {/* Selector de Posición Principal */}
+            <div className="flex-1 sm:min-w-[160px]">
               <span className="block text-[10px] text-sky-200 uppercase font-black tracking-wider mb-1">
-                Posició al Camp
+                Posició Principal
               </span>
               <CustomSelect
                 theme="dark"
@@ -286,8 +318,24 @@ export const PlayerDetail: React.FC = () => {
               />
             </div>
 
+            {/* Selector de Posición Alternativa */}
+            <div className="flex-1 sm:min-w-[160px]">
+              <span className="block text-[10px] text-amber-300 uppercase font-black tracking-wider mb-1">
+                Posició Alternativa
+              </span>
+              <CustomSelect
+                theme="dark"
+                value={currentSecondaryPosition}
+                onChange={handleSecondaryPositionChange}
+                options={[
+                  { value: 'Sense definir', label: 'Sense definir (Cap)' },
+                  ...PLAYER_POSITIONS.map((pos) => ({ value: pos, label: pos })),
+                ]}
+              />
+            </div>
+
             {/* Selector de Estado */}
-            <div className="flex-1 sm:min-w-[180px]">
+            <div className="flex-1 sm:min-w-[165px]">
               <span className="block text-[10px] text-sky-200 uppercase font-black tracking-wider mb-1">
                 Estat Selecció
               </span>
@@ -304,6 +352,26 @@ export const PlayerDetail: React.FC = () => {
                   { value: 'No seleccionado', label: 'Estat: No seleccionat' },
                 ]}
               />
+            </div>
+
+            {/* Valoración 1-5 estrellas */}
+            <div className="flex-1 sm:min-w-[155px] bg-[#001740]/70 border border-white/20 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
+              <div className="flex items-center justify-between mb-1">
+                <span className="block text-[10px] text-amber-300 uppercase font-black tracking-wider">
+                  Valoració (1-5 ⭐)
+                </span>
+                <span className="text-[11px] font-black text-amber-300">
+                  {player.rating ? `${player.rating}/5` : 'Sense nota'}
+                </span>
+              </div>
+              <div className="flex items-center justify-start">
+                <StarRating
+                  rating={player.rating || 0}
+                  onChange={handleRatingChange}
+                  size="md"
+                  theme="dark"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -665,8 +733,12 @@ export const PlayerDetail: React.FC = () => {
                   <span className="text-slate-900 font-bold mt-0.5 block">{player.infantil_year || 'Infantil'}</span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <span className="text-slate-500 block font-semibold">Posició:</span>
+                  <span className="text-slate-500 block font-semibold">Posició Principal:</span>
                   <span className="text-slate-900 font-black mt-0.5 block">{currentPosition}</span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <span className="text-slate-500 block font-semibold">Posició Alternativa:</span>
+                  <span className="text-slate-900 font-bold mt-0.5 block">{currentSecondaryPosition}</span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <span className="text-slate-500 block font-semibold">Peu Dominant:</span>
@@ -684,6 +756,21 @@ export const PlayerDetail: React.FC = () => {
                     </span>
                   </div>
                   <JerseyBadge number={player.jersey_number} size="sm" variant="kit" color="blue" />
+                </div>
+                <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200/80 flex items-center justify-between col-span-2">
+                  <div>
+                    <span className="text-amber-800 block font-black text-[10px] uppercase tracking-wider">
+                      Valoració Seleccionador:
+                    </span>
+                    <span className="text-slate-900 font-black mt-0.5 block text-xs">
+                      {player.rating ? `${player.rating} / 5 estrelles` : 'Sense valorar'}
+                    </span>
+                  </div>
+                  <StarRating
+                    rating={player.rating || 0}
+                    onChange={handleRatingChange}
+                    size="md"
+                  />
                 </div>
               </div>
             </Card>
@@ -768,16 +855,29 @@ export const PlayerDetail: React.FC = () => {
               </div>
 
               <div className="space-y-4">
-                <div>
-                  <CustomSelect
-                    label="Posició Principal al Camp *"
-                    value={positionInput || 'Sense definir'}
-                    onChange={(val) => setPositionInput(val === 'Sense definir' ? '' : val)}
-                    options={[
-                      { value: 'Sense definir', label: 'Sense definir' },
-                      ...PLAYER_POSITIONS.map((pos) => ({ value: pos, label: pos })),
-                    ]}
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <CustomSelect
+                      label="Posició Principal al Camp *"
+                      value={positionInput || 'Sense definir'}
+                      onChange={(val) => setPositionInput(val === 'Sense definir' ? '' : val)}
+                      options={[
+                        { value: 'Sense definir', label: 'Sense definir' },
+                        ...PLAYER_POSITIONS.map((pos) => ({ value: pos, label: pos })),
+                      ]}
+                    />
+                  </div>
+                  <div>
+                    <CustomSelect
+                      label="Posició Alternativa"
+                      value={secondaryPositionInput || 'Sense definir'}
+                      onChange={(val) => setSecondaryPositionInput(val === 'Sense definir' ? '' : val)}
+                      options={[
+                        { value: 'Sense definir', label: 'Sense definir (Cap)' },
+                        ...PLAYER_POSITIONS.map((pos) => ({ value: pos, label: pos })),
+                      ]}
+                    />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -827,6 +927,25 @@ export const PlayerDetail: React.FC = () => {
                       disabled
                       value={player.age ? `${player.age} anys` : 'N/A'}
                       className="w-full bg-slate-100 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-600 font-semibold cursor-not-allowed"
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="block text-xs font-black text-amber-800 uppercase tracking-wider">
+                      Valoració Seleccionador (1 a 5 estrelles)
+                    </label>
+                    <span className="text-xs text-slate-600 font-medium">
+                      Puntuació global del rendiment i potencial observat
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <StarRating
+                      rating={ratingInput}
+                      onChange={(newVal) => setRatingInput(newVal)}
+                      size="md"
+                      showValue
                     />
                   </div>
                 </div>

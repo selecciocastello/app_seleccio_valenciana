@@ -39,6 +39,123 @@ const WEEKDAY_FULL_CA = [
   'Dilluns', 'Dimarts', 'Dimecres', 'Dijous', 'Divendres', 'Dissabte', 'Diumenge'
 ];
 
+interface LeagueSummary {
+  key: string;
+  name: string;
+  group?: string;
+  shortName: string;
+  count: number;
+  badgeStyle: {
+    bg: string;
+    text: string;
+    border: string;
+    dot: string;
+    badgeBg: string;
+  };
+}
+
+const getLeagueBadgeStyle = (compName: string = '') => {
+  const comp = compName.toLowerCase();
+  if (comp.includes('autonòmica') || comp.includes('autonomica')) {
+    return {
+      bg: 'bg-amber-500/10 hover:bg-amber-500/20',
+      text: 'text-amber-300',
+      border: 'border-amber-500/30',
+      dot: 'bg-amber-400',
+      badgeBg: 'bg-amber-500/25 text-amber-200 border border-amber-500/30'
+    };
+  }
+  if (comp.includes('preferent')) {
+    return {
+      bg: 'bg-sky-500/10 hover:bg-sky-500/20',
+      text: 'text-sky-300',
+      border: 'border-sky-500/30',
+      dot: 'bg-sky-400',
+      badgeBg: 'bg-sky-500/25 text-sky-200 border border-sky-500/30'
+    };
+  }
+  if (comp.includes('1ª') || comp.includes('1a') || comp.includes('primera')) {
+    return {
+      bg: 'bg-emerald-500/10 hover:bg-emerald-500/20',
+      text: 'text-emerald-300',
+      border: 'border-emerald-500/30',
+      dot: 'bg-emerald-400',
+      badgeBg: 'bg-emerald-500/25 text-emerald-200 border border-emerald-500/30'
+    };
+  }
+  if (comp.includes('2ª') || comp.includes('2a') || comp.includes('segona')) {
+    return {
+      bg: 'bg-purple-500/10 hover:bg-purple-500/20',
+      text: 'text-purple-300',
+      border: 'border-purple-500/30',
+      dot: 'bg-purple-400',
+      badgeBg: 'bg-purple-500/25 text-purple-200 border border-purple-500/30'
+    };
+  }
+  if (comp.includes('cadet') || comp.includes('cadete')) {
+    return {
+      bg: 'bg-indigo-500/10 hover:bg-indigo-500/20',
+      text: 'text-indigo-300',
+      border: 'border-indigo-500/30',
+      dot: 'bg-indigo-400',
+      badgeBg: 'bg-indigo-500/25 text-indigo-200 border border-indigo-500/30'
+    };
+  }
+  return {
+    bg: 'bg-slate-800/80 hover:bg-slate-700/80',
+    text: 'text-slate-300',
+    border: 'border-slate-700',
+    dot: 'bg-slate-400',
+    badgeBg: 'bg-slate-800 text-slate-300 border border-slate-700'
+  };
+};
+
+const formatShortLeagueName = (compName?: string, groupName?: string): string => {
+  if (!compName) return 'Lliga';
+  let clean = compName
+    .replace(/^Lliga\s+/i, '')
+    .replace(/Infantil/i, '')
+    .replace(/Cadet/i, 'Cad.')
+    .replace(/Juvenil/i, 'Juv.')
+    .replace(/Primera Regional/i, '1ª Reg.')
+    .replace(/Segona Regional/i, '2ª Reg.')
+    .replace(/Regional/i, 'Reg.')
+    .trim();
+
+  if (groupName) {
+    const grpShort = groupName.replace(/Grup\s*[-–]?\s*/i, 'G').trim();
+    if (grpShort) {
+      return `${clean} ${grpShort}`.trim();
+    }
+  }
+  return clean;
+};
+
+const getMatchesByLeague = (dayMatches: Match[]): LeagueSummary[] => {
+  const map = new Map<string, LeagueSummary>();
+  
+  dayMatches.forEach((m) => {
+    const comp = m.competition_name || 'Lliga FFCV';
+    const grp = m.group_name || '';
+    const key = `${comp} - ${grp}`;
+    const existing = map.get(key);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      map.set(key, {
+        key,
+        name: comp,
+        group: grp,
+        shortName: formatShortLeagueName(comp, grp),
+        count: 1,
+        badgeStyle: getLeagueBadgeStyle(comp)
+      });
+    }
+  });
+
+  return Array.from(map.values()).sort((a, b) => b.count - a.count);
+};
+
 export const CalendarView: React.FC = () => {
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -77,6 +194,7 @@ export const CalendarView: React.FC = () => {
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [selectedDayDate, setSelectedDayDate] = useState<string | null>(null);
   const [dayModalSearch, setDayModalSearch] = useState<string>('');
+  const [dayModalLeague, setDayModalLeague] = useState<string>('all');
 
   // Llista de seleccionadors disponibles per al selector (Només els existents: Víctor Zandalinas i Administrador FFCV Castelló)
   const availableSelectors = useMemo(() => {
@@ -289,10 +407,19 @@ export const CalendarView: React.FC = () => {
     return count;
   }, [calendarGridDays, matchesByDate]);
 
-  // Partits del dia seleccionat per al modal del dia (amb suport de cerca)
+  // Partits complets del dia seleccionat (sense filtre de cerca per calcular estadístiques/lligues)
+  const rawDayMatches = useMemo(() => {
+    if (!selectedDayDate) return [];
+    return matchesByDate.get(selectedDayDate) || [];
+  }, [selectedDayDate, matchesByDate]);
+
+  // Partits del dia seleccionat per al modal del dia (amb suport de cerca i filtre per lliga)
   const selectedDayMatches = useMemo(() => {
     if (!selectedDayDate) return [];
-    const list = matchesByDate.get(selectedDayDate) || [];
+    let list = rawDayMatches;
+    if (dayModalLeague !== 'all') {
+      list = list.filter((m) => `${m.competition_name || 'Lliga FFCV'} - ${m.group_name || ''}` === dayModalLeague);
+    }
     if (!dayModalSearch.trim()) return list;
     const q = dayModalSearch.toLowerCase().trim();
     return list.filter(
@@ -304,7 +431,7 @@ export const CalendarView: React.FC = () => {
         (m.group_name || '').toLowerCase().includes(q) ||
         (m.competition_name || '').toLowerCase().includes(q)
     );
-  }, [selectedDayDate, matchesByDate, dayModalSearch]);
+  }, [selectedDayDate, rawDayMatches, dayModalLeague, dayModalSearch]);
 
   // Navegació de mesos
   const handlePrevMonth = () => {
@@ -766,7 +893,7 @@ export const CalendarView: React.FC = () => {
                           }
                         }}
                         className={clsx(
-                          "h-[115px] sm:h-[135px] rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between transition-all relative border group select-none",
+                          "min-h-[140px] sm:min-h-[160px] h-auto rounded-2xl p-1.5 sm:p-2 flex flex-col justify-start transition-all relative border group select-none",
                           cell.isCurrentMonth
                             ? hasMatches
                               ? "bg-slate-900/90 border-slate-800 hover:border-sky-500 hover:shadow-xl hover:shadow-sky-950/60 hover:bg-slate-850 cursor-pointer"
@@ -779,7 +906,7 @@ export const CalendarView: React.FC = () => {
                         <div className="flex items-center justify-between gap-1 mb-1 shrink-0">
                           <span
                             className={clsx(
-                              "w-6 h-6 rounded-lg flex items-center justify-center text-xs font-black transition-all",
+                              "w-5 h-5 sm:w-6 sm:h-6 rounded-md flex items-center justify-center text-[11px] sm:text-xs font-black transition-all",
                               cell.isToday
                                 ? "bg-[#ff6600] text-white shadow-md"
                                 : cell.isWeekend
@@ -794,54 +921,54 @@ export const CalendarView: React.FC = () => {
 
                           {hasMatches && (
                             <span
-                              className="px-2 py-0.5 rounded-full text-[10px] font-black bg-sky-500/15 text-sky-300 border border-sky-500/30 group-hover:bg-sky-500 group-hover:text-slate-950 transition-all shrink-0"
+                              className="px-1.5 py-0.5 rounded-full text-[9px] sm:text-[9.5px] font-black bg-sky-500/15 text-sky-300 border border-sky-500/30 group-hover:bg-sky-500 group-hover:text-slate-950 transition-all shrink-0"
                             >
                               {dayMatches.length} {dayMatches.length === 1 ? 'partit' : 'partits'}
                             </span>
                           )}
                         </div>
 
-                        {/* Contingut resumit dels partits (1 o 2 mini-files elegants) */}
-                        <div className="space-y-1 flex-1 overflow-hidden flex flex-col justify-center">
+                        {/* Contingut: Número de partits per Lliga (Fins a 6 lligues compactes) */}
+                        <div className="space-y-0.5 flex-1 flex flex-col justify-start w-full overflow-hidden">
                           {hasMatches ? (
-                            <>
-                              {dayMatches.slice(0, 2).map((m) => {
-                                const homeBD = getTeamPlayersBreakdown(m.home_team_name || '');
-                                const awayBD = getTeamPlayersBreakdown(m.away_team_name || '');
-                                const matchTime = formatMatchTime(m);
-                                const inAgenda = Boolean(getMatchAgendaItem(m.id));
-
-                                return (
-                                  <div
-                                    key={m.id}
+                            <div className="space-y-0.5 w-full">
+                              {getMatchesByLeague(dayMatches).slice(0, 6).map((league) => (
+                                <div
+                                  key={league.key}
+                                  className={clsx(
+                                    "px-1 sm:px-1.5 py-[2px] rounded-md border text-[9px] sm:text-[9.5px] font-bold transition-all flex items-center justify-between gap-1 w-full",
+                                    league.badgeStyle.bg,
+                                    league.badgeStyle.border,
+                                    league.badgeStyle.text
+                                  )}
+                                  title={`${league.name} ${league.group ? `· ${league.group}` : ''}: ${league.count} partits`}
+                                >
+                                  <div className="flex items-center gap-1 min-w-0 flex-1 truncate">
+                                    <span className={clsx("w-1.5 h-1.5 rounded-full shrink-0", league.badgeStyle.dot)} />
+                                    <span className="truncate font-black tracking-tight text-[8.5px] sm:text-[9.5px]">
+                                      {league.shortName}
+                                    </span>
+                                  </div>
+                                  <span
                                     className={clsx(
-                                      "px-1.5 py-0.5 rounded-md border text-[10px] font-bold transition-all flex items-center justify-between gap-1 truncate",
-                                      inAgenda
-                                        ? "bg-amber-950/40 border-amber-500/40 text-amber-200"
-                                        : "bg-slate-950/70 border-slate-800/80 text-slate-300 group-hover:border-slate-700"
+                                      "px-1 py-0 rounded text-[8px] sm:text-[8.5px] font-black shrink-0 min-w-[16px] text-center",
+                                      league.badgeStyle.badgeBg
                                     )}
                                   >
-                                    <span className="text-sky-400 font-black shrink-0 text-[9px]">{matchTime}</span>
-                                    <span className="truncate flex-1 font-semibold text-[9px] text-slate-200">
-                                      {m.home_team_name?.split(' ')[0]} - {m.away_team_name?.split(' ')[0]}
-                                    </span>
-                                    <div className="flex items-center gap-0.5 shrink-0 text-[8px] font-black">
-                                      {homeBD.firstYear + awayBD.firstYear > 0 && <span className="text-emerald-400">🟢{homeBD.firstYear + awayBD.firstYear}</span>}
-                                      {homeBD.secondYear + awayBD.secondYear > 0 && <span className="text-sky-400">🔵{homeBD.secondYear + awayBD.secondYear}</span>}
-                                    </div>
-                                  </div>
-                                );
-                              })}
+                                    {league.count}
+                                  </span>
+                                </div>
+                              ))}
 
-                              {dayMatches.length > 2 && (
-                                <div className="w-full py-0.5 px-1 rounded-md bg-sky-500/10 text-sky-300 border border-sky-500/20 text-[9px] font-black text-center truncate">
-                                  +{dayMatches.length - 2} partits més...
+                              {getMatchesByLeague(dayMatches).length > 6 && (
+                                <div className="w-full py-[1px] px-1 rounded bg-slate-800/60 text-slate-400 border border-slate-700/60 text-[8px] font-bold text-center truncate">
+                                  +{getMatchesByLeague(dayMatches).length - 6} lligues més...
                                 </div>
                               )}
-                            </>
+                            </div>
                           ) : (
                             cell.isCurrentMonth && (
-                              <div className="text-[10px] text-slate-600/70 italic text-center py-1">
+                              <div className="text-[10px] text-slate-600/70 italic text-center py-2">
                                 Sense partits
                               </div>
                             )
@@ -862,7 +989,7 @@ export const CalendarView: React.FC = () => {
                             )}
                           >
                             {/* Header del Hover Popover */}
-                            <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2.5">
+                            <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2">
                               <div>
                                 <span className="text-xs font-black text-white capitalize block">
                                   {formatMatchDateLong(cell.dateStr)}
@@ -874,6 +1001,25 @@ export const CalendarView: React.FC = () => {
                               <span className="text-[9px] font-extrabold uppercase bg-sky-500/20 text-sky-300 border border-sky-500/30 px-2 py-0.5 rounded-full">
                                 Clica per obrir
                               </span>
+                            </div>
+
+                            {/* Desglossament ràpid de partits per Lliga */}
+                            <div className="flex flex-wrap gap-1 mb-2.5 pb-2 border-b border-slate-800/80">
+                              {getMatchesByLeague(dayMatches).map((lg) => (
+                                <span
+                                  key={lg.key}
+                                  className={clsx(
+                                    "px-1.5 py-0.5 rounded-md text-[9px] font-black flex items-center gap-1 border",
+                                    lg.badgeStyle.bg,
+                                    lg.badgeStyle.border,
+                                    lg.badgeStyle.text
+                                  )}
+                                >
+                                  <span className={clsx("w-1.5 h-1.5 rounded-full", lg.badgeStyle.dot)} />
+                                  <span>{lg.shortName}:</span>
+                                  <span className="font-black text-white">{lg.count}</span>
+                                </span>
+                              ))}
                             </div>
 
                             {/* Llista de partits dins del hover */}
@@ -1226,6 +1372,44 @@ export const CalendarView: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {/* Barra de Filtre per Lligues del dia */}
+            {getMatchesByLeague(rawDayMatches).length > 1 && (
+              <div className="px-4 py-2.5 bg-slate-950/90 border-b border-slate-800 flex items-center gap-1.5 overflow-x-auto custom-scrollbar">
+                <span className="text-[11px] font-bold text-slate-400 mr-1 shrink-0">Lliga:</span>
+                <button
+                  type="button"
+                  onClick={() => setDayModalLeague('all')}
+                  className={clsx(
+                    "px-2.5 py-1 rounded-lg text-xs font-bold transition-all shrink-0",
+                    dayModalLeague === 'all'
+                      ? "bg-sky-500 text-slate-950 font-black shadow"
+                      : "bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800"
+                  )}
+                >
+                  Totes ({rawDayMatches.length})
+                </button>
+                {getMatchesByLeague(rawDayMatches).map((lg) => (
+                  <button
+                    key={lg.key}
+                    type="button"
+                    onClick={() => setDayModalLeague(dayModalLeague === lg.key ? 'all' : lg.key)}
+                    className={clsx(
+                      "px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 border",
+                      dayModalLeague === lg.key
+                        ? "bg-sky-500 text-slate-950 font-black border-sky-400 shadow"
+                        : `${lg.badgeStyle.bg} ${lg.badgeStyle.border} ${lg.badgeStyle.text}`
+                    )}
+                  >
+                    <span className={clsx("w-1.5 h-1.5 rounded-full", dayModalLeague === lg.key ? "bg-slate-950" : lg.badgeStyle.dot)} />
+                    <span>{lg.shortName}</span>
+                    <span className={clsx("px-1.5 py-0.2 rounded-full text-[10px] font-black", dayModalLeague === lg.key ? "bg-slate-950/20 text-slate-950" : lg.badgeStyle.badgeBg)}>
+                      {lg.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Llistat de partits d'aquest dia */}
             <div className="p-4 sm:p-6 space-y-4">

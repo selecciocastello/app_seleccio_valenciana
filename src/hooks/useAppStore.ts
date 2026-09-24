@@ -156,16 +156,50 @@ async function loadBundledData(): Promise<HeavyData> {
   return { players, teams, matches };
 }
 
+const CALLUPS_STORAGE_KEY = 'seleccio_callups_v1';
+const DEFAULT_INITIAL_CALLUPS: Callup[] = [
+  {
+    id: 'c_default_1',
+    title: '1a Convocatòria Oficial - Selecció Infantil Castelló',
+    date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+    location: 'Instal·lacions Esportives Chencho (Castelló)',
+    status: 'Planificada',
+    notes: 'Primer entrenament de preparació i observació tàctica.',
+    callup_players: []
+  }
+];
+
+function loadStoredCallups(): Callup[] {
+  try {
+    const raw = localStorage.getItem(CALLUPS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {
+    console.error('Error loading stored callups', e);
+  }
+  return DEFAULT_INITIAL_CALLUPS;
+}
+
 // --- ESTADO GLOBAL COMPARTIDO EN MEMORIA (Singleton para evitar saltos o re-fetches al cambiar de página) ---
 let memoryPlayers: Player[] = [];
 let memoryTeams: Team[] = [];
 let memoryMatches: Match[] = [];
-let memoryCallups: Callup[] = INITIAL_CALLUPS;
+let memoryCallups: Callup[] = loadStoredCallups();
 let memoryTrainings: TrainingSession[] = INITIAL_TRAININGS;
 let memoryReports: PlayerReport[] = INITIAL_REPORTS;
 let isDataLoadedFromDb = false;
 let heavyCacheVersion: string | null = null;
 let heavyCacheSavedAt = 0;
+
+function persistCallups() {
+  try {
+    localStorage.setItem(CALLUPS_STORAGE_KEY, JSON.stringify(memoryCallups));
+  } catch (e) {
+    console.error('Error persisting callups', e);
+  }
+}
 
 // Las ediciones locales se guardan en caché sin alargar el TTL de la descarga original
 function persistHeavyCache() {
@@ -342,13 +376,70 @@ export function useAppStore() {
       id: `c_${Date.now()}`,
       title: data.title || 'Nova Convocatòria',
       date: data.date || new Date().toISOString(),
-      status: 'Borrador',
-      callup_players: [],
+      location: data.location || 'Instal·lacions Esportives Chencho (Castelló)',
+      status: data.status || 'Planificada',
+      notes: data.notes || '',
+      callup_players: data.callup_players || [],
       ...data
     };
     memoryCallups = [created, ...memoryCallups];
+    persistCallups();
     notify();
     return created;
+  };
+
+  const updateCallup = (id: string, updates: Partial<Callup>) => {
+    memoryCallups = memoryCallups.map((c) =>
+      c.id === id ? { ...c, ...updates, updated_at: new Date().toISOString() } : c
+    );
+    persistCallups();
+    notify();
+  };
+
+  const addPlayersToCallup = (callupId: string, playerIds: string[]) => {
+    const targetCallup = memoryCallups.find((c) => c.id === callupId);
+    if (!targetCallup) return { addedCount: 0, totalCount: 0 };
+
+    const existingPlayerIds = new Set(
+      (targetCallup.callup_players || []).map((cp) => cp.player_id)
+    );
+
+    const newCallupPlayers: any[] = [];
+    playerIds.forEach((pid) => {
+      if (!existingPlayerIds.has(pid)) {
+        const pObj = memoryPlayers.find((p) => p.id === pid);
+        if (pObj) {
+          newCallupPlayers.push({
+            id: `cp_${callupId}_${pid}_${Date.now()}`,
+            callup_id: callupId,
+            player_id: pid,
+            player: pObj,
+            status: 'Convocado',
+            attendance: true,
+            created_at: new Date().toISOString()
+          });
+        }
+      }
+    });
+
+    const updatedCallupPlayers = [
+      ...(targetCallup.callup_players || []),
+      ...newCallupPlayers
+    ];
+
+    memoryCallups = memoryCallups.map((c) =>
+      c.id === callupId
+        ? { ...c, callup_players: updatedCallupPlayers, updated_at: new Date().toISOString() }
+        : c
+    );
+
+    persistCallups();
+    notify();
+
+    return {
+      addedCount: newCallupPlayers.length,
+      totalCount: updatedCallupPlayers.length
+    };
   };
 
   const createTraining = (data: Partial<TrainingSession>) => {
@@ -567,6 +658,8 @@ export function useAppStore() {
     addPlayer,
     updatePlayer,
     createCallup,
+    updateCallup,
+    addPlayersToCallup,
     createTraining,
     createReport,
     addToAgenda,

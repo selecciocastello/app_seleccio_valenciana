@@ -100,7 +100,15 @@ export const supabaseService = {
         .eq('id', id);
 
       if (error) {
-        console.error('Error al actualizar jugador en Supabase:', error.message);
+        // Si el esquema de Supabase aún no tiene las columnas recién migradas, reintentar guardando el resto
+        if (error.message?.includes('schema cache') || error.message?.includes('column')) {
+          const sanitized = { ...updates };
+          delete (sanitized as any).secondary_position;
+          delete (sanitized as any).rating;
+          if (Object.keys(sanitized).length > 0) {
+            await supabase.from('players').update(sanitized).eq('id', id);
+          }
+        }
         return false;
       }
       return true;

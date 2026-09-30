@@ -212,9 +212,6 @@ function calculateInfantilYear(history, age) {
   return 'Desconocido';
 }
 
-  return 'Desconocido';
-}
-
 function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });

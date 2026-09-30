@@ -20,6 +20,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { JerseyBadge } from '../../components/ui/JerseyBadge';
 import { CustomSelect } from '../../components/ui/Select';
 import { PLAYER_POSITIONS, type Player, type PlayerStatus } from '../../types/models';
+import { PlayerPhoto } from '../../components/ui/PlayerPhoto';
 
 type SortField = 'name' | 'matches' | 'goals';
 type SortOrder = 'asc' | 'desc';
@@ -396,21 +397,14 @@ export const Players: React.FC = () => {
                   <div className="flex items-start gap-3 min-w-0 flex-1">
                     {/* Foto clara i neta */}
                     <div className="relative shrink-0">
-                      {player.photo_url ? (
-                        <img
-                          src={player.photo_url}
-                          alt={player.full_name}
-                          className="w-14 h-14 rounded-2xl object-cover border border-slate-200 shadow-2xs bg-slate-100"
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = 'none';
-                          }}
-                        />
-                      ) : (
-                        <div className="w-14 h-14 rounded-2xl bg-[#002568] text-white flex items-center justify-center font-black text-base uppercase shadow-2xs">
-                          {player.first_name[0]}
-                          {player.last_name[0]}
-                        </div>
-                      )}
+                      <PlayerPhoto
+                        src={player.photo_url}
+                        alt={player.full_name}
+                        firstName={player.first_name}
+                        lastName={player.last_name}
+                        imgClassName="w-14 h-14 rounded-2xl object-cover border border-slate-200 shadow-2xs bg-slate-100"
+                        fallbackClassName="w-14 h-14 rounded-2xl bg-[#002568] text-white flex items-center justify-center font-black text-base uppercase shadow-2xs"
+                      />
                     </div>
 
                     {/* Informació Principal: Nom, Club, Any Infantil i Edat */}
@@ -451,7 +445,7 @@ export const Players: React.FC = () => {
                         <span className="text-[10px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
                           {player.age ? `${player.age} anys` : '13 anys'}
                         </span>
-                        {player.rating && player.rating > 0 && (
+                        {(player.rating ?? 0) > 0 && (
                           <span className="text-[10px] font-black text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
                             ⭐ {player.rating}/5
                           </span>
@@ -612,27 +606,20 @@ export const Players: React.FC = () => {
                           to={`/jugadores/${player.id}`}
                           className="flex items-center gap-3 group/player hover:text-[#002568] transition-colors"
                         >
-                          {player.photo_url ? (
-                            <img
-                              src={player.photo_url}
-                              alt={player.full_name}
-                              className="w-10 h-10 rounded-full object-cover border border-slate-200 shadow-sm shrink-0 group-hover/player:ring-2 group-hover/player:ring-[#ff6600] transition-all"
-                              onError={(e) => {
-                                (e.target as HTMLElement).style.display = 'none';
-                              }}
-                            />
-                          ) : (
-                            <div className="w-10 h-10 rounded-full bg-[#002568] text-white flex items-center justify-center font-black text-xs uppercase shadow-sm shrink-0 group-hover/player:ring-2 group-hover/player:ring-[#ff6600] transition-all">
-                              {player.first_name[0]}
-                              {player.last_name[0]}
-                            </div>
-                          )}
+                          <PlayerPhoto
+                            src={player.photo_url}
+                            alt={player.full_name}
+                            firstName={player.first_name}
+                            lastName={player.last_name}
+                            imgClassName="w-10 h-10 rounded-full object-cover border border-slate-200 shadow-sm shrink-0 group-hover/player:ring-2 group-hover/player:ring-[#ff6600] transition-all"
+                            fallbackClassName="w-10 h-10 rounded-full bg-[#002568] text-white flex items-center justify-center font-black text-xs uppercase shadow-sm shrink-0 group-hover/player:ring-2 group-hover/player:ring-[#ff6600] transition-all"
+                          />
                           <div className="min-w-0">
                             <span className="text-sm font-black text-[#061338] uppercase group-hover/player:text-[#002568] group-hover/player:underline block truncate max-w-[200px]">
                               {player.full_name}
                             </span>
                             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                              {player.rating && player.rating > 0 && (
+                              {(player.rating ?? 0) > 0 && (
                                 <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-black" title={`Valoració: ${player.rating}/5 estrelles`}>
                                   ⭐ {player.rating}/5
                                 </span>

@@ -35,6 +35,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { JerseyBadge } from '../../components/ui/JerseyBadge';
 import { StarRating } from '../../components/ui/StarRating';
 import { PLAYER_POSITIONS } from '../../types/models';
+import { PlayerPhoto } from '../../components/ui/PlayerPhoto';
 
 export const PlayerDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -207,21 +208,14 @@ export const PlayerDetail: React.FC = () => {
           <div className="flex flex-col sm:flex-row items-center sm:items-start md:items-center gap-5 text-center sm:text-left">
             {/* Foto del Jugador - Neta i sense solapaments */}
             <div className="relative shrink-0">
-              {player.photo_url ? (
-                <img
-                  src={player.photo_url}
-                  alt={player.full_name}
-                  className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover border-2 border-white/20 shadow-2xl bg-white/10"
-                  onError={(e) => {
-                    (e.target as HTMLElement).style.display = 'none';
-                  }}
-                />
-              ) : (
-                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-[#ff6600] border-2 border-white/20 flex items-center justify-center font-black text-3xl text-white shadow-2xl">
-                  {player.first_name?.[0] || 'J'}
-                  {player.last_name?.[0] || 'P'}
-                </div>
-              )}
+              <PlayerPhoto
+                src={player.photo_url}
+                alt={player.full_name}
+                firstName={player.first_name}
+                lastName={player.last_name}
+                imgClassName="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover border-2 border-white/20 shadow-2xl bg-white/10"
+                fallbackClassName="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-[#ff6600] border-2 border-white/20 flex items-center justify-center font-black text-3xl text-white shadow-2xl"
+              />
             </div>
 
             <div>

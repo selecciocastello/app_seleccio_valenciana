@@ -26,6 +26,7 @@ import { StarRating } from '../../components/ui/StarRating';
 import { useAppStore } from '../../hooks/useAppStore';
 import { useToast } from '../../contexts/ToastContext';
 import type { Player } from '../../types/models';
+import { PlayerPhoto } from '../../components/ui/PlayerPhoto';
 
 type GroupByMode = 'position' | 'team' | 'none';
 type StatusFilter = 'all' | 'Preseleccionado' | 'Seleccionado' | 'all_pool';
@@ -1005,21 +1006,14 @@ const PlayerCardInteractive: React.FC<PlayerCardInteractiveProps> = ({
       {/* 2. Dades del Jugador: Foto, Nom, Equip i Posició */}
       <div className="flex items-start gap-3">
         <Link to={`/jugadores/${player.id}`} className="shrink-0 group">
-          {player.photo_url ? (
-            <img
-              src={player.photo_url}
-              alt={player.full_name}
-              className="w-14 h-14 rounded-2xl object-cover border border-slate-200 shadow-2xs group-hover:ring-2 group-hover:ring-[#ff6600] transition-all bg-slate-100"
-              onError={(e) => {
-                (e.target as HTMLElement).style.display = 'none';
-              }}
-            />
-          ) : (
-            <div className="w-14 h-14 rounded-2xl bg-[#002568] text-white flex items-center justify-center font-black text-base uppercase shadow-2xs group-hover:ring-2 group-hover:ring-[#ff6600] transition-all">
-              {player.first_name?.[0] || 'J'}
-              {player.last_name?.[0] || 'P'}
-            </div>
-          )}
+          <PlayerPhoto
+            src={player.photo_url}
+            alt={player.full_name}
+            firstName={player.first_name}
+            lastName={player.last_name}
+            imgClassName="w-14 h-14 rounded-2xl object-cover border border-slate-200 shadow-2xs group-hover:ring-2 group-hover:ring-[#ff6600] transition-all bg-slate-100"
+            fallbackClassName="w-14 h-14 rounded-2xl bg-[#002568] text-white flex items-center justify-center font-black text-base uppercase shadow-2xs group-hover:ring-2 group-hover:ring-[#ff6600] transition-all"
+          />
         </Link>
 
         <div className="min-w-0 flex-1">

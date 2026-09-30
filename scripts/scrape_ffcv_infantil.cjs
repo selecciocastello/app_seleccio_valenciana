@@ -374,8 +374,137 @@ async function fetchManualPositions(supabase) {
   return result;
 }
 
+/** Lee todas las filas de una tabla paginando de 1000 en 1000. Lanza si hay error. */
+async function selectAll(supabase, table, columns, filter = (q) => q) {
+  const rows = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await filter(supabase.from(table).select(columns)).range(from, from + pageSize - 1);
+    if (error) throw new Error(`${table}: ${error.message}`);
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) return rows;
+  }
+}
+
+/**
+ * Un jugador está protegido si un seleccionador ha trabajado con él: estado distinto
+ * de Candidato, posición/valoración/notas/contacto editados, o vinculado a informes,
+ * convocatorias o entrenamientos. Los protegidos nunca se borran.
+ */
+function isProtectedPlayer(p, linkedIds) {
+  const filled = (v) => v != null && String(v).trim() !== '';
+  return (
+    (filled(p.status) && p.status !== 'Candidato') ||
+    p.position_manual === true ||
+    filled(p.secondary_position) ||
+    (p.rating || 0) > 0 ||
+    filled(p.notes) ||
+    filled(p.phone) ||
+    filled(p.email) ||
+    filled(p.guardian_name) ||
+    filled(p.guardian_phone) ||
+    filled(p.guardian_email) ||
+    filled(p.dominant_foot) ||
+    linkedIds.has(p.id)
+  );
+}
+
+/**
+ * Jugadores de la BD que ya no aparecen en ninguna plantilla raspada:
+ *  - protegidos: se actualizan con su ficha actual de la FFCV (equipo, dorsal, foto,
+ *    historial...) sin tocar lo editado; si su equipo no está en nuestras competiciones
+ *    quedan marcados como is_stale.
+ *  - el resto: se borran.
+ * Solo se llama tras una descarga completa y sin errores.
+ */
+async function reconcileStalePlayers(supabase, scrapedIds, teamNameToId) {
+  console.log('\n🧹 Revisando jugadores que ya no están en ninguna plantilla...');
+  let dbPlayers;
+  const linkedIds = new Set();
+  try {
+    dbPlayers = await selectAll(
+      supabase,
+      'players',
+      'id, source_player_id, first_name, last_name, status, position_manual, secondary_position, rating, notes, phone, email, guardian_name, guardian_phone, guardian_email, dominant_foot',
+      (q) => q.eq('source', 'ffcv_scraping')
+    );
+    for (const table of ['player_reports', 'callup_players', 'training_attendance']) {
+      for (const row of await selectAll(supabase, table, 'player_id')) {
+        if (row.player_id) linkedIds.add(row.player_id);
+      }
+    }
+  } catch (err) {
+    console.warn(`   ⚠️ No se pudo leer el estado de los jugadores (${err.message}). No se borra ni actualiza nada.`);
+    return;
+  }
+
+  const stale = dbPlayers.filter((p) => !scrapedIds.has(String(p.source_player_id)));
+  if (stale.length === 0) {
+    console.log('   ✅ No hay jugadores antiguos.');
+    return;
+  }
+  // Salvaguarda: si "desaparece" más del 30% algo ha ido mal en la descarga
+  if (stale.length > dbPlayers.length * 0.3) {
+    console.warn(`   ⚠️ ${stale.length} de ${dbPlayers.length} jugadores no aparecen en las plantillas. Parece un error de descarga: no se borra nada.`);
+    return;
+  }
+
+  const toKeep = stale.filter((p) => isProtectedPlayer(p, linkedIds));
+  const toDelete = stale.filter((p) => !isProtectedPlayer(p, linkedIds));
+
+  // Actualizar protegidos con su ficha actual
+  let moved = 0;
+  let markedStale = 0;
+  for (const p of toKeep) {
+    const cod = encodeURIComponent(p.source_player_id);
+    const temp = encodeURIComponent(TARGET_TEMPORADA);
+    const playerApi = await ffcvFetch(`jugadores/jugador_api.php?codigo=${cod}&cod_temporada=${temp}`);
+    const historyApi = await ffcvFetch(`jugadores/historial_deportivo.php?cod_licencia=${cod}&cod_temporada=${temp}`);
+    const hasProfile = isValidProfile(playerApi);
+
+    const update = { is_stale: true, scraped_at: new Date().toISOString() };
+    if (hasProfile) {
+      const history = buildHistory(historyApi);
+      const age = parseInt(playerApi.edad, 10);
+      const teamId = teamNameToId.get(String(playerApi.equipo || '').trim().toLowerCase()) || null;
+      Object.assign(update, {
+        jersey_number: parseDorsal(playerApi.dorsal_jugador),
+        photo_url: toPhotoUrl(playerApi.foto, p.source_player_id),
+        age: isNaN(age) ? null : age,
+        sports_data: buildStats(playerApi),
+        infantil_year: calculateInfantilYear(history, isNaN(age) ? null : age, parseBirthYear(playerApi, historyApi)),
+        is_stale: !teamId
+      });
+      if (history.length > 0) update.history = history;
+      if (teamId) update.team_id = teamId;
+      const position = normalizePosition(playerApi.posicion_jugador);
+      if (!p.position_manual && position) update.position = position;
+    }
+
+    const { error } = await supabase.from('players').update(update).eq('id', p.id);
+    if (error) {
+      console.warn(`   ⚠️ Error actualizando ${p.first_name} ${p.last_name}: ${error.message}`);
+      continue;
+    }
+    if (update.is_stale) markedStale++;
+    else moved++;
+    console.log(`   🔒 ${p.first_name} ${p.last_name} (protegido) -> ${update.is_stale ? `no vigente${hasProfile ? ` (${playerApi.equipo})` : ''}` : playerApi.equipo}`);
+  }
+
+  // Borrar el resto
+  let deleted = 0;
+  for (let i = 0; i < toDelete.length; i += 100) {
+    const ids = toDelete.slice(i, i + 100).map((p) => p.id);
+    const { error } = await supabase.from('players').delete().in('id', ids);
+    if (error) console.warn(`   ⚠️ Error borrando jugadores antiguos: ${error.message}`);
+    else deleted += ids.length;
+  }
+
+  console.log(`   ✅ ${stale.length} jugadores antiguos: ${moved} protegidos actualizados a su equipo actual, ${markedStale} protegidos marcados como no vigentes, ${deleted} borrados.`);
+}
+
 // Intentar guardar en Supabase si está disponible
-async function trySaveToSupabase(matches, teams, players) {
+async function trySaveToSupabase(matches, teams, players, { playersComplete = false } = {}) {
   const env = loadEnv();
   const supabaseUrl = env.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const supabaseKey = env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -516,7 +645,8 @@ async function trySaveToSupabase(matches, teams, players) {
           team_id: teamId,
           city: p.city || 'Castelló',
           province: p.province || 'Castelló',
-          status: 'Candidato',
+          // status no se envía: lo gestionan los seleccionadores (en altas nuevas la BD pone 'Candidato')
+          is_stale: false,
           sports_data: p.sports_data || {},
           source: 'ffcv_scraping',
           source_player_id: sourcePlayerId,
@@ -538,6 +668,14 @@ async function trySaveToSupabase(matches, teams, players) {
       }
       console.log(`   ✅ ${pSuccess}/${dbPlayers.length} jugadores sincronizados en Supabase.`);
       console.log(`   🔒 ${preservedCount} posiciones editadas a mano conservadas.`);
+
+      if (!playersComplete) {
+        console.log('   ℹ️  Descarga de plantillas incompleta o limitada: no se revisan jugadores antiguos.');
+      } else if (pSuccess < dbPlayers.length) {
+        console.warn('   ⚠️ Hubo errores sincronizando jugadores: no se revisan jugadores antiguos.');
+      } else {
+        await reconcileStalePlayers(supabase, new Set(playersMap.keys()), teamNameToId);
+      }
     }
   } catch (err) {
     console.warn('   ⚠️ Error conectando con Supabase:', err.message);
@@ -626,6 +764,11 @@ function buildHistory(historyApi) {
     .map(({ cod_temporada, ...h }) => h);
 }
 
+/** La API responde estado '1' incluso para códigos inexistentes: exigimos que traiga el nombre. */
+function isValidProfile(playerApi) {
+  return Boolean(playerApi && playerApi.estado === '1' && String(playerApi.nombre_jugador || '').trim());
+}
+
 function parseBirthYear(playerApi, historyApi) {
   const fromApi = parseInt(playerApi?.anio_nacimiento, 10);
   if (!isNaN(fromApi)) return fromApi;
@@ -644,7 +787,7 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
 
   const parsedName = parsePlayerName(nombreJugador);
   const history = buildHistory(historyApi);
-  const hasProfile = playerApi && playerApi.estado === '1';
+  const hasProfile = isValidProfile(playerApi);
   const age = hasProfile ? parseInt(playerApi.edad, 10) : NaN;
   const birthYear = parseBirthYear(playerApi, historyApi);
 
@@ -683,6 +826,8 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
   const allMatches = [];
   const allTeams = [];
   const allPlayers = [];
+  // Solo si se recorren todas las plantillas sin fallos se revisan/borran jugadores antiguos
+  let playersComplete = !matchesOnly && limitTeams === Infinity && limitPlayers === Infinity;
   const dataDir = path.join(__dirname, '..', 'src', 'data');
   ensureDir(dataDir);
 
@@ -839,6 +984,7 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
             : (Array.isArray(classifData?.clasificaciones) ? classifData.clasificaciones : []);
 
           console.log(`     ${equipos.length} equipos en el grupo.`);
+          if (!classifData || equipos.length === 0) playersComplete = false;
           const teamsToScrape = equipos.slice(0, limitTeams);
           if (equipos.length > teamsToScrape.length) {
             console.log(`     ⚠️ Límite de equipos aplicado (--limit-teams ${limitTeams})`);
@@ -852,6 +998,7 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
             console.log(`\n     🏃 [${t + 1}/${teamsToScrape.length}] Equipo: ${nombreEquipo} (${codEquipo})`);
 
             const teamDetail = await ffcvFetch(`equipos/ver_equipo.php?codequipo=${encodeURIComponent(codEquipo)}`);
+            if (!teamDetail) playersComplete = false;
             const teamInfo = teamDetail?.j || teamDetail || {};
             const jugadores = Array.isArray(teamInfo.jugadores_equipo) ? teamInfo.jugadores_equipo : [];
 
@@ -886,7 +1033,10 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
             );
 
             records.forEach((rec, idx) => {
-              if (!rec) return;
+              if (!rec) {
+                playersComplete = false;
+                return;
+              }
               const { _incomplete, ...player } = rec;
               allPlayers.push(player);
               const extra = [
@@ -934,7 +1084,7 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
     }
 
     // ── 4. SINCRONIZACIÓN CON SUPABASE (SI ESTÁ ACTIVO) ──────────────────────────
-    await trySaveToSupabase(allMatches, allTeams, allPlayers);
+    await trySaveToSupabase(allMatches, allTeams, allPlayers, { playersComplete });
 
     console.log(`\n✨ ¡Proceso de scraping finalizado con éxito en ${Math.round((Date.now() - startedAt) / 1000)}s!`);
 

@@ -1056,6 +1056,12 @@ const PlayerCardInteractive: React.FC<PlayerCardInteractiveProps> = ({
                 {player.infantil_year === 'Infantil 2º año' ? '2n Any' : player.infantil_year === 'Infantil 1er año' ? '1r Any' : player.infantil_year}
               </span>
             )}
+            <span className="text-[10px] font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 inline-flex items-center gap-1">
+              <span>{player.age ? `${player.age} anys` : '13 anys'}</span>
+              {player.birth_year && (
+                <span className="text-[#002568] font-black font-mono">({player.birth_year})</span>
+              )}
+            </span>
           </div>
         </div>
       </div>

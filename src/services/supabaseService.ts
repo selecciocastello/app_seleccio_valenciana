@@ -38,7 +38,13 @@ export const supabaseService = {
       }
       return ((data as Player[]) || []).map((p) => ({
         ...p,
-        infantil_year: calculateInfantilYear(p.history, p.age, p.infantil_year)
+        birth_year: p.birth_year || (p.birth_date ? new Date(p.birth_date).getFullYear() : undefined),
+        infantil_year: calculateInfantilYear(
+          p.history,
+          p.age,
+          p.infantil_year,
+          p.birth_year || (p.birth_date ? new Date(p.birth_date).getFullYear() : null)
+        )
       }));
     } catch (e) {
       console.warn('Excepción al conectar con Supabase (fetchPlayers):', e);

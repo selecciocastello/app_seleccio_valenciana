@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import {
   ArrowLeft,
@@ -39,8 +39,17 @@ import { PlayerPhoto } from '../../components/ui/PlayerPhoto';
 
 export const PlayerDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { players, updatePlayer, callups, reports } = useAppStore();
   const { showToast } = useToast();
+
+  const handleGoBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate('/jugadores');
+    }
+  };
 
   const [activeTab, setActiveTab] = useState<
     'resumen' | 'datos' | 'convocatorias' | 'entrenamientos' | 'informes' | 'historico'
@@ -79,12 +88,14 @@ export const PlayerDetail: React.FC = () => {
   if (!player) {
     return (
       <div className="space-y-6 animate-fade-in p-6">
-        <Link
-          to="/jugadores"
-          className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-[#061338] transition-colors"
+        <button
+          type="button"
+          onClick={handleGoBack}
+          className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-[#061338] transition-colors cursor-pointer group"
         >
-          <ArrowLeft className="w-4 h-4" /> Tornar al llistat de jugadors
-        </Link>
+          <ArrowLeft className="w-4 h-4 text-[#ff6600] group-hover:-translate-x-0.5 transition-transform" />
+          <span>Tornar al llistat de jugadors</span>
+        </button>
         <Card className="p-8 text-center bg-white border border-slate-200">
           <p className="text-slate-600 font-bold">No s'ha trobat el jugador seleccionat.</p>
         </Card>
@@ -181,6 +192,10 @@ export const PlayerDetail: React.FC = () => {
   const currentPosition = normalizePosition(player.position);
   const currentSecondaryPosition = normalizePosition(player.secondary_position);
 
+  const playerBirthYear =
+    player.birth_year ||
+    (player.birth_date ? new Date(player.birth_date).getFullYear() : null);
+
   const prevSeason = (player.history || []).find((h) => {
     const t = (h.temporada || '').replace(/\s+/g, '');
     return t.includes('2025-2026') || t.includes('25-26');
@@ -193,13 +208,14 @@ export const PlayerDetail: React.FC = () => {
     <div className="space-y-6 animate-fade-in pb-12">
       {/* Botón Volver */}
       <div>
-        <Link
-          to="/jugadores"
-          className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-[#061338] transition-colors"
+        <button
+          type="button"
+          onClick={handleGoBack}
+          className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-[#061338] transition-colors cursor-pointer group"
         >
-          <ArrowLeft className="w-4 h-4 text-[#ff6600]" />
+          <ArrowLeft className="w-4 h-4 text-[#ff6600] group-hover:-translate-x-0.5 transition-transform" />
           <span>Tornar al llistat de jugadors</span>
-        </Link>
+        </button>
       </div>
 
       {/* Profile Header Card */}
@@ -238,10 +254,19 @@ export const PlayerDetail: React.FC = () => {
                       "px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border shadow-sm",
                       player.infantil_year === 'Infantil 1er año' && "bg-sky-400/20 text-sky-200 border-sky-300/40",
                       player.infantil_year === 'Infantil 2º año' && "bg-emerald-400/20 text-emerald-200 border-emerald-300/40",
+                      player.infantil_year === 'Alevín 2º año' && "bg-amber-400/20 text-amber-200 border-amber-300/40",
                       player.infantil_year === 'Desconocido' && "bg-slate-700/60 text-slate-200 border-slate-600"
                     )}
                   >
                     {player.infantil_year}
+                  </span>
+                )}
+                {playerBirthYear && (
+                  <span
+                    className="px-3 py-1 rounded-full text-xs font-black bg-indigo-500/30 text-indigo-100 border border-indigo-300/40 shadow-sm"
+                    title={`Any oficial de naixement: ${playerBirthYear}`}
+                  >
+                    Any {playerBirthYear}
                   </span>
                 )}
                 {player.age && (
@@ -735,6 +760,18 @@ export const PlayerDetail: React.FC = () => {
                   <span className="text-slate-900 font-bold mt-0.5 block">{currentSecondaryPosition}</span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <span className="text-slate-500 block font-semibold">Any de Naixement:</span>
+                  <span className="text-slate-900 font-black mt-0.5 block">
+                    {playerBirthYear ? `Any ${playerBirthYear} (Gen. ${playerBirthYear})` : 'Sense especificar'}
+                  </span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <span className="text-slate-500 block font-semibold">Edat / Data Naixement:</span>
+                  <span className="text-slate-900 font-bold mt-0.5 block">
+                    {player.birth_date ? `${player.birth_date} (${player.age || 13} anys)` : (player.age ? `${player.age} anys` : 'Sense data')}
+                  </span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <span className="text-slate-500 block font-semibold">Peu Dominant:</span>
                   <span className="text-slate-900 font-bold mt-0.5 block">{player.dominant_foot || 'Diestro'}</span>
                 </div>
@@ -742,7 +779,7 @@ export const PlayerDetail: React.FC = () => {
                   <span className="text-slate-500 block font-semibold">Població:</span>
                   <span className="text-slate-900 font-bold mt-0.5 block">{player.city || 'Castelló'}</span>
                 </div>
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between col-span-2 sm:col-span-1">
                   <div>
                     <span className="text-slate-500 block font-semibold">Dorsal:</span>
                     <span className="text-slate-900 font-bold mt-0.5 block">
@@ -1280,28 +1317,18 @@ export const PlayerDetail: React.FC = () => {
                   Criteri d'Assignació d'Any Infantil:
                 </p>
                 <p className="text-slate-700 font-medium leading-relaxed">
-                  {prevSeason ? (
+                  {prevSeason && (
                     <>
                       A la temporada anterior (<strong className="text-blue-950 font-black">2025-2026</strong>) va militar a <strong className="text-blue-950 font-bold">{prevSeason.equipo}</strong> en la categoria <strong className="text-blue-950 font-bold">{prevSeason.categoria}</strong>.{' '}
-                      {player.infantil_year === 'Alevín 2º año'
-                        ? 'En haver competit com a Aleví de 1er any a la 2025-2026, li correspon la categoria d\'Aleví de 2n any per a la temporada 2026/2027.'
-                        : (player.infantil_year === 'Infantil 1er año'
-                          ? 'En haver competit com a Aleví 2n any a la 25/26 o Aleví 1er any a la 24/25, li correspon la condició d\'Infantil de 1er any per a la temporada 2026/2027.'
-                          : (player.infantil_year === 'Infantil 2º año'
-                            ? 'En haver competit ja en categoria Infantil / Cadet, li correspon la categoria d\'Infantil de 2n any per a la temporada 2026/2027.'
-                            : 'Determinació basada en el registre federatiu oficial.'))}
-                    </>
-                  ) : (
-                    <>
-                      {player.infantil_year === 'Alevín 2º año'
-                        ? 'Classificat com a Aleví de 2n any segons el registre federatiu oficial.'
-                        : (player.infantil_year === 'Infantil 1er año'
-                          ? 'Classificat com a Infantil de 1er any (Generació 2014) segons la seva trajectòria federativa oficial.'
-                          : (player.infantil_year === 'Infantil 2º año'
-                            ? 'Classificat com a Infantil de 2n any (Generació 2013) segons la seva trajectòria federativa oficial.'
-                            : 'No consta registre federatiu anterior per a aquest jugador en el seu historial, per la qual cosa es classifica com a Desconegut.'))}
                     </>
                   )}
+                  {player.infantil_year === 'Alevín 2º año'
+                    ? 'Per any de naixement (generació 2015 o posterior), li correspon la categoria d\'Aleví de 2n any per a la temporada 2026/2027.'
+                    : player.infantil_year === 'Infantil 1er año'
+                      ? 'Per any de naixement (generació 2014), li correspon la condició d\'Infantil de 1er any per a la temporada 2026/2027.'
+                      : player.infantil_year === 'Infantil 2º año'
+                        ? 'Per any de naixement (generació 2013), li correspon la condició d\'Infantil de 2n any per a la temporada 2026/2027.'
+                        : 'No consta l\'any de naixement ni registre federatiu suficient, per la qual cosa es classifica com a Desconegut.'}
                 </p>
               </div>
             </div>

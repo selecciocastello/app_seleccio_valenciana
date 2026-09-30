@@ -25,21 +25,102 @@ import { PlayerPhoto } from '../../components/ui/PlayerPhoto';
 type SortField = 'name' | 'matches' | 'goals';
 type SortOrder = 'asc' | 'desc';
 
+const PLAYERS_FILTERS_KEY = 'players_filters_state_v1';
+
+interface PlayersFilterState {
+  search: string;
+  selectedStatus: string;
+  selectedTeam: string;
+  selectedPosition: string;
+  selectedInfantilYear: string;
+  selectedMatchesFilter: string;
+  selectedGoalsFilter: string;
+  sortBy: SortField;
+  sortOrder: SortOrder;
+}
+
+const defaultFilterState: PlayersFilterState = {
+  search: '',
+  selectedStatus: 'all',
+  selectedTeam: 'all',
+  selectedPosition: 'all',
+  selectedInfantilYear: 'all',
+  selectedMatchesFilter: 'all',
+  selectedGoalsFilter: 'all',
+  sortBy: 'name',
+  sortOrder: 'asc',
+};
+
+const getSavedFilters = (): PlayersFilterState => {
+  try {
+    const saved = sessionStorage.getItem(PLAYERS_FILTERS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        search: typeof parsed.search === 'string' ? parsed.search : defaultFilterState.search,
+        selectedStatus: typeof parsed.selectedStatus === 'string' ? parsed.selectedStatus : defaultFilterState.selectedStatus,
+        selectedTeam: typeof parsed.selectedTeam === 'string' ? parsed.selectedTeam : defaultFilterState.selectedTeam,
+        selectedPosition: typeof parsed.selectedPosition === 'string' ? parsed.selectedPosition : defaultFilterState.selectedPosition,
+        selectedInfantilYear: typeof parsed.selectedInfantilYear === 'string' ? parsed.selectedInfantilYear : defaultFilterState.selectedInfantilYear,
+        selectedMatchesFilter: typeof parsed.selectedMatchesFilter === 'string' ? parsed.selectedMatchesFilter : defaultFilterState.selectedMatchesFilter,
+        selectedGoalsFilter: typeof parsed.selectedGoalsFilter === 'string' ? parsed.selectedGoalsFilter : defaultFilterState.selectedGoalsFilter,
+        sortBy: (parsed.sortBy === 'name' || parsed.sortBy === 'matches' || parsed.sortBy === 'goals') ? parsed.sortBy : defaultFilterState.sortBy,
+        sortOrder: (parsed.sortOrder === 'asc' || parsed.sortOrder === 'desc') ? parsed.sortOrder : defaultFilterState.sortOrder,
+      };
+    }
+  } catch (e) {
+    console.error('Error loading saved player filters', e);
+  }
+  return defaultFilterState;
+};
+
 export const Players: React.FC = () => {
   const { t } = useLanguage();
   const { players, teams, addPlayer, updatePlayer } = useAppStore();
   const { showToast } = useToast();
 
-  const [search, setSearch] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState<string>('all');
-  const [selectedTeam, setSelectedTeam] = useState<string>('all');
-  const [selectedPosition, setSelectedPosition] = useState<string>('all');
-  const [selectedInfantilYear, setSelectedInfantilYear] = useState<string>('all');
-  const [selectedMatchesFilter, setSelectedMatchesFilter] = useState<string>('all');
-  const [selectedGoalsFilter, setSelectedGoalsFilter] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<SortField>('name');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
+  const savedFilters = useMemo(() => getSavedFilters(), []);
+
+  const [search, setSearch] = useState<string>(savedFilters.search);
+  const [selectedStatus, setSelectedStatus] = useState<string>(savedFilters.selectedStatus);
+  const [selectedTeam, setSelectedTeam] = useState<string>(savedFilters.selectedTeam);
+  const [selectedPosition, setSelectedPosition] = useState<string>(savedFilters.selectedPosition);
+  const [selectedInfantilYear, setSelectedInfantilYear] = useState<string>(savedFilters.selectedInfantilYear);
+  const [selectedMatchesFilter, setSelectedMatchesFilter] = useState<string>(savedFilters.selectedMatchesFilter);
+  const [selectedGoalsFilter, setSelectedGoalsFilter] = useState<string>(savedFilters.selectedGoalsFilter);
+  const [sortBy, setSortBy] = useState<SortField>(savedFilters.sortBy);
+  const [sortOrder, setSortOrder] = useState<SortOrder>(savedFilters.sortOrder);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Sync active filters to sessionStorage
+  React.useEffect(() => {
+    try {
+      const stateToSave: PlayersFilterState = {
+        search,
+        selectedStatus,
+        selectedTeam,
+        selectedPosition,
+        selectedInfantilYear,
+        selectedMatchesFilter,
+        selectedGoalsFilter,
+        sortBy,
+        sortOrder,
+      };
+      sessionStorage.setItem(PLAYERS_FILTERS_KEY, JSON.stringify(stateToSave));
+    } catch (e) {
+      console.error('Error saving player filters to session storage', e);
+    }
+  }, [
+    search,
+    selectedStatus,
+    selectedTeam,
+    selectedPosition,
+    selectedInfantilYear,
+    selectedMatchesFilter,
+    selectedGoalsFilter,
+    sortBy,
+    sortOrder,
+  ]);
 
   // Form State per afegir nou jugador
   const [firstName, setFirstName] = useState('');
@@ -95,6 +176,9 @@ export const Players: React.FC = () => {
     setSelectedGoalsFilter('all');
     setSortBy('name');
     setSortOrder('asc');
+    try {
+      sessionStorage.removeItem(PLAYERS_FILTERS_KEY);
+    } catch (e) {}
   };
 
   const handleSort = (field: SortField) => {
@@ -440,10 +524,13 @@ export const Players: React.FC = () => {
                             (!player.infantil_year || player.infantil_year === 'Desconocido') && "bg-slate-100 text-slate-600 border-slate-200"
                           )}
                         >
-                          {player.infantil_year === 'Infantil 2º año' ? '2n Any (2011)' : player.infantil_year === 'Infantil 1er año' ? '1r Any (2012)' : 'Infantil'}
+                          {player.infantil_year === 'Infantil 2º año' ? '2n Any (2013)' : player.infantil_year === 'Infantil 1er año' ? '1r Any (2014)' : player.infantil_year === 'Alevín 2º año' ? 'Aleví 2n Any (2015)' : 'Infantil'}
                         </span>
-                        <span className="text-[10px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
-                          {player.age ? `${player.age} anys` : '13 anys'}
+                        <span className="text-[10px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 inline-flex items-center gap-1">
+                          <span>{player.age ? `${player.age} anys` : '13 anys'}</span>
+                          {player.birth_year && (
+                            <span className="text-[#002568] font-black font-mono">({player.birth_year})</span>
+                          )}
                         </span>
                         {(player.rating ?? 0) > 0 && (
                           <span className="text-[10px] font-black text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
@@ -696,8 +783,15 @@ export const Players: React.FC = () => {
                           </span>
                         </div>
                       </td>
-                      <td className="py-3 px-3 font-semibold text-slate-600 text-center whitespace-nowrap">
-                        {player.age ? `${player.age} anys` : (player.birth_date || 'Infantil')}
+                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                        <span className="font-bold text-slate-800 text-xs block">
+                          {player.age ? `${player.age} anys` : '13 anys'}
+                        </span>
+                        {player.birth_year && (
+                          <span className="inline-block text-[10px] font-black text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 mt-0.5">
+                            Any {player.birth_year}
+                          </span>
+                        )}
                       </td>
                       <td className="py-3 px-3 text-center whitespace-nowrap">
                         <Badge status={player.status} />

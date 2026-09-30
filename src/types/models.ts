@@ -125,6 +125,7 @@ export interface Player {
   last_name: string;
   full_name: string;
   birth_date?: string;
+  birth_year?: number;
   category_id?: string;
   category?: Category;
   position?: PlayerPosition;

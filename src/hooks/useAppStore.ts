@@ -3,6 +3,15 @@ import type { Player, Team, Match, Callup, TrainingSession, PlayerReport, Scouti
 import { supabaseService } from '../services/supabaseService';
 import { calculateInfantilYear } from '../utils/infantilYear';
 import { cacheGet, cacheSet } from '../utils/dataCache';
+import scrapedPlayersData from '../data/scraped_players.json';
+
+const scrapedPlayersLookup = new Map<string, any>();
+(scrapedPlayersData as any[]).forEach((sp) => {
+  if (sp.ffcv_player_id) scrapedPlayersLookup.set(String(sp.ffcv_player_id), sp);
+  if (sp.source_player_id) scrapedPlayersLookup.set(String(sp.source_player_id), sp);
+  if (sp.id) scrapedPlayersLookup.set(String(sp.id), sp);
+  if (sp.full_name) scrapedPlayersLookup.set(sp.full_name.trim().toLowerCase(), sp);
+});
 
 const INITIAL_TRAININGS: TrainingSession[] = [];
 const INITIAL_REPORTS: PlayerReport[] = [];
@@ -18,7 +27,7 @@ interface HeavyCache extends HeavyData {
   savedAt: number;
 }
 
-const HEAVY_CACHE_KEY = 'heavy_data_v1';
+const HEAVY_CACHE_KEY = 'heavy_data_v3';
 // Aunque la versión no cambie, se refresca como mucho una vez al día
 const HEAVY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -75,13 +84,16 @@ async function loadBundledData(): Promise<HeavyData> {
 
   const players: Player[] = (playersModule.default as any[]).map((p) => {
     const { firstName, lastName, fullName } = parsePlayerName(p.full_name);
-    const calculatedYear = calculateInfantilYear(p.history, p.age, p.infantil_year);
+    const parsedBirthYear = typeof p.birth_year === 'number' ? p.birth_year : undefined;
+    const calculatedYear = calculateInfantilYear(p.history, p.age, p.infantil_year, parsedBirthYear);
     const matchedTeam = teamsMap.get(p.team_id) || teamsMap.get((p.team || '').trim().toLowerCase());
     return {
       id: p.id || `player_${p.ffcv_player_id}`,
       first_name: firstName,
       last_name: lastName,
       full_name: fullName,
+      birth_date: p.birth_date,
+      birth_year: parsedBirthYear,
       team_id: matchedTeam?.id || p.team_id,
       team: matchedTeam
         ? {
@@ -217,7 +229,33 @@ function persistHeavyCache() {
 }
 
 function applyHeavyData(data: HeavyData) {
-  if (data.players.length > 0) memoryPlayers = data.players;
+  if (data.players.length > 0) {
+    memoryPlayers = data.players.map((p) => {
+      const match =
+        (p.source_player_id && scrapedPlayersLookup.get(String(p.source_player_id))) ||
+        (p.id && scrapedPlayersLookup.get(String(p.id))) ||
+        (p.full_name && scrapedPlayersLookup.get(p.full_name.trim().toLowerCase()));
+
+      const birthYear =
+        typeof p.birth_year === 'number' && !isNaN(p.birth_year)
+          ? p.birth_year
+          : match && typeof match.birth_year === 'number'
+            ? match.birth_year
+            : p.birth_date
+              ? new Date(p.birth_date).getFullYear()
+              : undefined;
+
+      const birthDate = p.birth_date || (match && match.birth_date);
+      const calculatedYear = calculateInfantilYear(p.history, p.age, p.infantil_year, birthYear);
+
+      return {
+        ...p,
+        birth_year: birthYear,
+        birth_date: birthDate,
+        infantil_year: calculatedYear
+      };
+    });
+  }
   if (data.teams.length > 0) memoryTeams = data.teams;
   if (data.matches.length > 0) memoryMatches = data.matches;
 }

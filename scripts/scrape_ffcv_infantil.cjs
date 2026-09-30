@@ -207,23 +207,26 @@ function isAlevin2oAno(categoria) {
  * Determina si un jugador es "Infantil 1er año", "Infantil 2º año" o "Alevín 2º año"
  * según las reglas federativas:
  *
- * 1. Si en la temporada 2025-2026 figura como "Alevín 1er. Año"
- *    -> el jugador es "Alevín 2º año".
- * 2. Infantil 1er año:
- *    - Si en la temporada 2025-2026 figura como "Alevín 2º. Año" (o Alevín genérico).
- *    - O si en la temporada 2024-2025 (2 temporadas anteriores) figura como "Alevín 1er. Año".
- * 3. Infantil 2º año:
- *    - Si en la temporada 2025-2026 figura en "Infantil" o "Cadete" (y no cumplió la condición de Alevín 1er año en 24-25).
- * 4. Fallback por año de nacimiento (temporada 2026-2027):
- *    - 2015 o posterior -> Alevín 2º año
- *    - 2014 -> Infantil 1er año
+ * 1. Año de nacimiento (norma federativa, temporada 2026-2027):
  *    - 2013 o anterior -> Infantil 2º año
- * 5. Fallback por edad federativa:
- *    - <= 11 años -> Alevín 2º año
- *    - 12 años -> Infantil 1er año
- *    - >= 13 años -> Infantil 2º año
+ *    - 2014 -> Infantil 1er año
+ *    - 2015 o posterior -> Alevín 2º año
+ *    El historial NO manda: su categoría es la del equipo en el que jugó, no la
+ *    del jugador (p. ej. un nacido en 2013 que repitió en un Alevín 1er año).
+ * 2. Solo si no hay año de nacimiento, por historial:
+ *    - 25-26 "Alevín 1er. Año" -> Alevín 2º año
+ *    - 25-26 "Alevín 2º. Año" (o Alevín genérico) o 24-25 "Alevín 1er. Año" -> Infantil 1er año
+ *    - 25-26 en Infantil o Cadete -> Infantil 2º año
+ * 3. Por edad: <= 11 -> Alevín 2º año, 12 -> Infantil 1er año, >= 13 -> Infantil 2º año
  */
 function calculateInfantilYear(history, age, birthYear) {
+  if (typeof birthYear === 'number' && !isNaN(birthYear)) {
+    const infantil2Year = TARGET_SEASON_START_YEAR - 13;
+    if (birthYear <= infantil2Year) return 'Infantil 2º año';
+    if (birthYear === infantil2Year + 1) return 'Infantil 1er año';
+    return 'Alevín 2º año';
+  }
+
   if (history && Array.isArray(history) && history.length > 0) {
     const season2425 = history.find((h) => {
       const t = (h.temporada || '').toLowerCase().replace(/\s+/g, '');
@@ -258,13 +261,6 @@ function calculateInfantilYear(history, age, birthYear) {
         return 'Infantil 2º año';
       }
     }
-  }
-
-  if (typeof birthYear === 'number' && !isNaN(birthYear)) {
-    const infantil2Year = TARGET_SEASON_START_YEAR - 13;
-    if (birthYear <= infantil2Year) return 'Infantil 2º año';
-    if (birthYear === infantil2Year + 1) return 'Infantil 1er año';
-    return 'Alevín 2º año';
   }
 
   if (typeof age === 'number' && !isNaN(age)) {
@@ -801,6 +797,7 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
     dorsal: hasProfile ? parseDorsal(playerApi.dorsal_jugador) : null,
     age: isNaN(age) ? null : age,
     birth_year: birthYear,
+    birth_date: parseDate(historyApi?.fecha_nacimiento),
     photo_url: hasProfile ? toPhotoUrl(playerApi.foto, codJugador) : null,
     team: nombreEquipo,
     team_id: `ffcv-team-${codEquipo}`,

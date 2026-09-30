@@ -371,6 +371,14 @@ export function useAppStore() {
   };
 
   const updatePlayer = (id: string, updates: Partial<Player>) => {
+    const current = memoryPlayers.find((p) => p.id === id);
+    const positionEdited =
+      ('position' in updates && (updates.position || '') !== (current?.position || '')) ||
+      ('secondary_position' in updates && (updates.secondary_position || '') !== (current?.secondary_position || ''));
+    if (positionEdited) {
+      updates = { ...updates, position_manual: true };
+    }
+
     memoryPlayers = memoryPlayers.map((p) =>
       p.id === id ? { ...p, ...updates, updated_at: new Date().toISOString() } : p
     );

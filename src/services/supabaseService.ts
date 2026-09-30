@@ -105,6 +105,7 @@ export const supabaseService = {
           const sanitized = { ...updates };
           delete (sanitized as any).secondary_position;
           delete (sanitized as any).rating;
+          delete (sanitized as any).position_manual;
           if (Object.keys(sanitized).length > 0) {
             await supabase.from('players').update(sanitized).eq('id', id);
           }

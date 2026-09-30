@@ -15,28 +15,19 @@
  *   --players-only        Solo raspar plantillas, jugadores e historial
  *   --limit-teams <n>     Limitar número de equipos por grupo para pruebas
  *   --limit-players <n>   Limitar número de jugadores por equipo para pruebas
- *   --headless <bool>     Ejecutar en modo headless (por defecto true)
+ *
+ * Todos los datos se obtienen de la API JSON pública de ffcv.es (la misma que usa
+ * su web), sin navegador. La FFCV limita a ~240 peticiones/minuto por IP (HTTP 429
+ * con retry_after), así que todas las peticiones pasan por un limitador global.
  */
 
 const fs = require('fs');
 const path = require('path');
 const { toPhotoUrl } = require('./player_photos.cjs');
 
-// Intentar cargar playwright desde node_modules local o desde App UD Atzeneta
-let chromium;
-try {
-  ({ chromium } = require('playwright'));
-} catch (e) {
-  try {
-    ({ chromium } = require(path.join(__dirname, '..', '..', 'App UD Atzeneta', 'node_modules', 'playwright')));
-  } catch (e2) {
-    console.error('❌ Error: Playwright no está instalado. Ejecuta: npm install -D playwright');
-    process.exit(1);
-  }
-}
-
 // Configuración de competiciones solicitadas: Preferente, 1ª Regional y 2ª Regional
 const TARGET_TEMPORADA = '22'; // 2026-2027
+const TARGET_SEASON_START_YEAR = 2026;
 
 const TARGET_COMPETITIONS = [
   {
@@ -64,7 +55,69 @@ const limitTeamsIdx = args.indexOf('--limit-teams');
 const limitTeams = limitTeamsIdx !== -1 ? parseInt(args[limitTeamsIdx + 1], 10) : Infinity;
 const limitPlayersIdx = args.indexOf('--limit-players');
 const limitPlayers = limitPlayersIdx !== -1 ? parseInt(args[limitPlayersIdx + 1], 10) : Infinity;
-const headless = !args.includes('--no-headless');
+
+// ── Cliente HTTP de la API FFCV con límite de peticiones ─────────────────────
+const FFCV_API_BASE = 'https://ffcv.es/competiciones/api';
+const MIN_REQUEST_INTERVAL_MS = 300; // ~200 peticiones/minuto, por debajo del límite de la FFCV
+const FFCV_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Referer': 'https://ffcv.es/competiciones/',
+  'X-Requested-With': 'XMLHttpRequest'
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+let nextRequestAt = 0;
+
+async function acquireRequestSlot() {
+  const now = Date.now();
+  const slot = Math.max(now, nextRequestAt);
+  nextRequestAt = slot + MIN_REQUEST_INTERVAL_MS;
+  if (slot > now) await sleep(slot - now);
+}
+
+/**
+ * GET a la API de la FFCV. Devuelve el JSON o null si falla tras los reintentos.
+ * Ante un 429 pausa todas las peticiones el tiempo que indique retry_after.
+ */
+async function ffcvFetch(endpoint, maxRetries = 5) {
+  const url = `${FFCV_API_BASE}/${endpoint}`;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    await acquireRequestSlot();
+    try {
+      const res = await fetch(url, { headers: FFCV_HEADERS, signal: AbortSignal.timeout(20000) });
+      if (res.status === 429) {
+        const body = await res.json().catch(() => ({}));
+        const waitSecs = (parseInt(body.retry_after, 10) || 60) + 2;
+        console.warn(`        ⏳ Límite de peticiones FFCV alcanzado. Esperando ${waitSecs}s...`);
+        nextRequestAt = Math.max(nextRequestAt, Date.now() + waitSecs * 1000);
+        continue;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      if (attempt >= maxRetries) {
+        console.warn(`        ⚠️ Error definitivo en ${endpoint}: ${err.message}`);
+        return null;
+      }
+      await sleep(1000 * attempt);
+    }
+  }
+  return null;
+}
+
+/** Ejecuta fn sobre cada elemento con como máximo `concurrency` tareas simultáneas, preservando el orden. */
+async function mapWithConcurrency(items, concurrency, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (next < items.length) {
+      const idx = next++;
+      results[idx] = await fn(items[idx], idx);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
 
 function formatLogoUrl(url) {
   if (!url) return null;
@@ -161,12 +214,16 @@ function isAlevin2oAno(categoria) {
  *    - O si en la temporada 2024-2025 (2 temporadas anteriores) figura como "Alevín 1er. Año".
  * 3. Infantil 2º año:
  *    - Si en la temporada 2025-2026 figura en "Infantil" o "Cadete" (y no cumplió la condición de Alevín 1er año en 24-25).
- * 4. Fallback por edad federativa:
+ * 4. Fallback por año de nacimiento (temporada 2026-2027):
+ *    - 2015 o posterior -> Alevín 2º año
+ *    - 2014 -> Infantil 1er año
+ *    - 2013 o anterior -> Infantil 2º año
+ * 5. Fallback por edad federativa:
  *    - <= 11 años -> Alevín 2º año
  *    - 12 años -> Infantil 1er año
  *    - >= 13 años -> Infantil 2º año
  */
-function calculateInfantilYear(history, age) {
+function calculateInfantilYear(history, age, birthYear) {
   if (history && Array.isArray(history) && history.length > 0) {
     const season2425 = history.find((h) => {
       const t = (h.temporada || '').toLowerCase().replace(/\s+/g, '');
@@ -201,6 +258,13 @@ function calculateInfantilYear(history, age) {
         return 'Infantil 2º año';
       }
     }
+  }
+
+  if (typeof birthYear === 'number' && !isNaN(birthYear)) {
+    const infantil2Year = TARGET_SEASON_START_YEAR - 13;
+    if (birthYear <= infantil2Year) return 'Infantil 2º año';
+    if (birthYear === infantil2Year + 1) return 'Infantil 1er año';
+    return 'Alevín 2º año';
   }
 
   if (typeof age === 'number' && !isNaN(age)) {
@@ -269,6 +333,45 @@ function loadEnv() {
 // Polyfill de WebSocket para Node < 22 en @supabase/supabase-js
 if (!globalThis.WebSocket) {
   globalThis.WebSocket = class DummyWebSocket {};
+}
+
+/**
+ * Devuelve Map<source_player_id, position> de los jugadores cuya posición ha editado
+ * un seleccionador (position_manual = true). La posición alternativa no hace falta
+ * protegerla: el scraper nunca la envía, así que el upsert no la toca.
+ * Si la columna aún no existe (migración sin aplicar), conserva cualquier posición
+ * que no venga del scraper, para no perder ediciones.
+ */
+async function fetchManualPositions(supabase) {
+  const result = new Map();
+  const pageSize = 1000;
+  let useFallback = false;
+
+  for (let from = 0; ; from += pageSize) {
+    let query = supabase.from('players').select(useFallback ? 'source_player_id, position' : 'source_player_id, position, position_manual')
+      .eq('source', 'ffcv_scraping')
+      .range(from, from + pageSize - 1);
+    if (!useFallback) query = query.eq('position_manual', true);
+
+    const { data, error } = await query;
+    if (error) {
+      if (!useFallback && /position_manual/.test(error.message || '')) {
+        console.warn('   ⚠️ Falta la columna players.position_manual (aplica la migración 20260930000008). Se conservan todas las posiciones existentes.');
+        useFallback = true;
+        from = -pageSize;
+        continue;
+      }
+      throw new Error(`No se pudieron leer las posiciones manuales: ${error.message}`);
+    }
+
+    for (const row of data || []) {
+      if (!row.source_player_id || !row.position) continue;
+      if (useFallback && ['Sense definir', 'Candidato'].includes(row.position)) continue;
+      result.set(String(row.source_player_id), row.position);
+    }
+    if (!data || data.length < pageSize) break;
+  }
+  return result;
 }
 
 // Intentar guardar en Supabase si está disponible
@@ -377,6 +480,10 @@ async function trySaveToSupabase(matches, teams, players) {
         }
       }
 
+      // Posiciones editadas a mano por un seleccionador: se conservan las de la BD
+      const manualPositions = await fetchManualPositions(supabase);
+      let preservedCount = 0;
+
       const playersMap = new Map();
       for (const p of players) {
         const sourcePlayerId = String(p.ffcv_player_id || p.source_player_id || p.id || '');
@@ -389,15 +496,21 @@ async function trySaveToSupabase(matches, teams, players) {
         let cleanJersey = null;
         if (p.dorsal != null && p.dorsal !== '') {
           const num = parseInt(p.dorsal, 10);
-          if (!isNaN(num) && num > 0 && num <= 99 && num !== p.age) {
+          if (!isNaN(num) && num > 0 && num <= 99) {
             cleanJersey = num;
           }
+        }
+
+        let position = p.position || 'Candidato';
+        if (manualPositions.has(sourcePlayerId)) {
+          position = manualPositions.get(sourcePlayerId);
+          preservedCount++;
         }
 
         playersMap.set(sourcePlayerId, {
           first_name: firstName,
           last_name: lastName,
-          position: p.position || 'Candidato',
+          position,
           jersey_number: cleanJersey,
           photo_url: toPhotoUrl(p.photo_url, sourcePlayerId),
           team_id: teamId,
@@ -424,164 +537,139 @@ async function trySaveToSupabase(matches, teams, players) {
         else pSuccess += chunk.length;
       }
       console.log(`   ✅ ${pSuccess}/${dbPlayers.length} jugadores sincronizados en Supabase.`);
+      console.log(`   🔒 ${preservedCount} posiciones editadas a mano conservadas.`);
     }
   } catch (err) {
     console.warn('   ⚠️ Error conectando con Supabase:', err.message);
   }
 }
 
-function getChromiumLaunchOptions(headless) {
-  const options = { headless };
-  const cacheBase = path.join(process.env.HOME || '/Users/imac', 'Library', 'Caches', 'ms-playwright');
-  if (fs.existsSync(cacheBase)) {
-    try {
-      const entries = fs.readdirSync(cacheBase);
-      for (const entry of entries) {
-        if (entry.startsWith('chromium-')) {
-          const candidate = path.join(cacheBase, entry, 'chrome-mac-arm64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing');
-          if (fs.existsSync(candidate)) {
-            options.executablePath = candidate;
-            break;
-          }
-        }
-      }
-    } catch (e) {}
-  }
-  return options;
+// Posiciones de la FFCV -> posiciones canónicas de la app (PLAYER_POSITIONS en src/types/models.ts)
+const POSITION_MAP = {
+  'portero': 'Portero',
+  'portera': 'Portero',
+  'portero/a': 'Portero',
+  'central': 'Defensa Central',
+  'defensa': 'Defensa Central',
+  'defensa central': 'Defensa Central',
+  'lateral derecho': 'Lateral Derecho',
+  'lateral izquierdo': 'Lateral Izquierdo',
+  'carrilero derecho': 'Carrilero Derecho',
+  'carrilero izquierdo': 'Carrilero Izquierdo',
+  'pivote': 'Pivote Defensivo',
+  'pivote defensivo': 'Pivote Defensivo',
+  'medio centro': 'Mediocentro',
+  'mediocentro': 'Mediocentro',
+  'medio centro defensivo': 'Pivote Defensivo',
+  'medio centro ofensivo': 'Mediapunta',
+  'mediapunta': 'Mediapunta',
+  'medio derecho': 'Extremo Derecho',
+  'medio izquierdo': 'Extremo Izquierdo',
+  'extremo derecho': 'Extremo Derecho',
+  'extremo izquierdo': 'Extremo Izquierdo',
+  'delantero': 'Delantero Centro',
+  'delantera': 'Delantero Centro',
+  'delantero/a': 'Delantero Centro',
+  'delantero centro': 'Delantero Centro',
+  'segundo delantero': 'Segundo Delantero'
+};
+
+function normalizePosition(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return null;
+  const mapped = POSITION_MAP[text.toLowerCase()];
+  if (mapped) return mapped;
+  // Posición desconocida: se conserva en formato título
+  return text.split(/\s+/).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 }
 
-async function scrapePlayerWithRetry(page, playerUrl, maxRetries = 2) {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      await page.evaluate(url => { window.location.href = url; }, playerUrl);
-      await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 });
+function parseDorsal(raw) {
+  const num = parseInt(String(raw || '').trim(), 10);
+  return !isNaN(num) && num >= 1 && num <= 99 ? num : null;
+}
 
-      // Si redirige a WordPress, re-establecer sesión
-      if (page.url().includes('/wp')) {
-        if (attempt < maxRetries) {
-          console.warn(`        ⚠️ Intento ${attempt}: Redirección a /wp. Re-estableciendo sesión...`);
-          await page.goto('https://ffcv.es/competiciones/#partidos', { waitUntil: 'domcontentloaded', timeout: 20000 });
-          await page.evaluate(() => {
-            try { sessionStorage.setItem('ffcv_entry_ok', '1'); } catch(e) {}
-          });
-          await page.waitForTimeout(1000);
-          continue;
-        } else {
-          return { profileData: {}, history: [], isWp: true };
-        }
-      }
+// Estadísticas de la API -> mismas claves que se guardaban antes desde la ficha web
+const STAT_KEY_MAP = {
+  'Total Goles': 'Goles',
+  'Media Goles por partido': 'Media goles/partido',
+  'Doble Amarilla': 'Doble amarilla'
+};
 
-      // Esperar dinámicamente a que aparezcan los elementos de la ficha del jugador en el DOM
-      await page.waitForSelector('img.player-photo, .stat-card, .player-name, .label, .roster-card-dorsal', { timeout: 6000 }).catch(() => null);
-      await page.waitForTimeout(200);
-
-      // Extraer foto, dorsal, edad, posición y estadísticas
-      const profileData = await page.evaluate(() => {
-        const photoImg = document.querySelector('img.player-photo');
-        const photo = photoImg ? photoImg.src : null;
-
-        // Extraer edad de texto: "12 años", "13 años", "12 anys", etc.
-        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-        let node;
-        let age = null;
-        while ((node = walker.nextNode())) {
-          const m = node.nodeValue.match(/(\d+)\s*años?/i) || node.nodeValue.match(/(\d+)\s*anys?/i);
-          if (m) {
-            age = parseInt(m[1], 10);
-            break;
-          }
-        }
-
-        // Extraer dorsal específicamente del elemento oficial .roster-card-dorsal
-        const dorsalEl = document.querySelector('.roster-card-dorsal, .player-dorsal, .roster-dorsal');
-        let dorsal = null;
-        if (dorsalEl) {
-          const dorsalText = dorsalEl.textContent.trim();
-          const dorsalMatch = dorsalText.match(/\b([1-9][0-9]?)\b/);
-          if (dorsalMatch) {
-            const num = parseInt(dorsalMatch[1], 10);
-            if (num >= 1 && num <= 99 && !dorsalText.toLowerCase().includes('año') && !dorsalText.toLowerCase().includes('any') && !dorsalText.toLowerCase().includes('edad')) {
-              if (age == null || num !== age) {
-                dorsal = num;
-              }
-            }
-          }
-        }
-
-        // Extraer posición (ej: <span class="label">Lateral derecho</span>)
-        const labelElements = Array.from(document.querySelectorAll('.label, span.label, .posicion, .position, .player-position, [class*="posicion"]'));
-        let position = null;
-        for (const el of labelElements) {
-          const text = el.textContent.trim();
-          if (text && text.length > 2 && text.length < 40 && !text.toLowerCase().includes('año') && !text.toLowerCase().includes('any') && !text.toLowerCase().includes('temporada') && !text.toLowerCase().includes('candidato')) {
-            position = text.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-            break;
-          }
-        }
-
-        // Extraer estadísticas de las stat-cards
-        const stats = {};
-        document.querySelectorAll('.stat-card').forEach(card => {
-          const val = card.querySelector('.stat-val')?.textContent?.trim();
-          const lbl = card.querySelector('.stat-lbl')?.textContent?.trim();
-          if (lbl && val !== undefined) stats[lbl] = val;
-        });
-
-        return { photo, age, dorsal, stats, position };
-      });
-
-      // Clic en pestaña Historial para obtener tabla de trayectorias
-      let history = [];
-      try {
-        const histTab = page.locator('a.match-tab[href="#history"], [href*="history"]').first();
-        if (await histTab.isVisible({ timeout: 2000 })) {
-          await histTab.click();
-          await page.waitForSelector('#history table tbody tr, table tbody tr', { timeout: 3000 }).catch(() => null);
-          await page.waitForTimeout(200);
-
-          history = await page.evaluate(() => {
-            const rows = Array.from(document.querySelectorAll('#history table tbody tr, table tbody tr'));
-            return rows.map(r => {
-              const cells = r.querySelectorAll('td');
-              if (cells.length < 4) return null;
-              const temporada = cells[0]?.textContent?.trim();
-              const escudo = cells[1]?.querySelector('img')?.src || null;
-              const equipo = cells[2]?.textContent?.trim();
-              const categoria = cells[3]?.textContent?.trim();
-              return {
-                temporada,
-                escudo_url: escudo && !escudo.includes('escudo_generico') ? escudo : null,
-                equipo,
-                categoria
-              };
-            }).filter(h => h && h.temporada && h.equipo);
-          });
-        }
-      } catch (histErr) {}
-
-      // Si obtuvimos foto, edad o historial, o ya es el último intento, devolvemos resultado
-      if (profileData.photo || profileData.age != null || history.length > 0 || attempt >= maxRetries) {
-        return { profileData, history, isWp: false };
-      }
-
-      console.warn(`        ⚠️ Intento ${attempt}: Datos incompletos. Reintentando...`);
-      await page.waitForTimeout(600);
-    } catch (err) {
-      if (attempt >= maxRetries) {
-        console.warn(`        ⚠️ Error definitivo jugador: ${err.message.split('\n')[0]}`);
-        return { profileData: {}, history: [], isWp: false };
-      }
-      console.warn(`        ⚠️ Error intento ${attempt}: ${err.message.split('\n')[0]}. Reintentando...`);
-      try {
-        await page.goto('https://ffcv.es/competiciones/#partidos', { waitUntil: 'domcontentloaded', timeout: 15000 });
-        await page.evaluate(() => {
-          try { sessionStorage.setItem('ffcv_entry_ok', '1'); } catch(e) {}
-        });
-      } catch(e) {}
-      await page.waitForTimeout(1000);
-    }
+function buildStats(playerApi) {
+  const stats = {};
+  for (const item of [...(playerApi.partidos || []), ...(playerApi.tarjetas || [])]) {
+    if (!item || !item.nombre) continue;
+    const key = STAT_KEY_MAP[item.nombre] || item.nombre;
+    stats[key] = key === 'Media goles/partido' ? (parseFloat(item.valor) || 0).toFixed(2) : String(item.valor ?? '0');
   }
-  return { profileData: {}, history: [], isWp: false };
+  if (playerApi.minutos_totales_jugados != null) stats['Minutos'] = String(playerApi.minutos_totales_jugados);
+  return stats;
+}
+
+function buildHistory(historyApi) {
+  const rows = Array.isArray(historyApi?.datos_historico) && historyApi.datos_historico.length
+    ? historyApi.datos_historico
+    : (Array.isArray(historyApi?.datos_estadisticos) ? historyApi.datos_estadisticos : []);
+  return rows
+    .map((h) => {
+      const escudo = h.escudo && h.escudo !== '/pnfg//' ? formatLogoUrl(h.escudo) : null;
+      return {
+        temporada: String(h.temporada || '').trim(),
+        escudo_url: escudo,
+        equipo: String(h.equipo || h.nombre_equipo || '').trim(),
+        categoria: String(h.categoria || '').trim(),
+        cod_temporada: parseInt(h.cod_temporada, 10) || 0
+      };
+    })
+    .filter((h) => h.temporada && h.equipo)
+    .sort((a, b) => b.cod_temporada - a.cod_temporada)
+    .map(({ cod_temporada, ...h }) => h);
+}
+
+function parseBirthYear(playerApi, historyApi) {
+  const fromApi = parseInt(playerApi?.anio_nacimiento, 10);
+  if (!isNaN(fromApi)) return fromApi;
+  const m = String(historyApi?.fecha_nacimiento || '').match(/(\d{4})$/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+/** Obtiene ficha + historial de un jugador y construye su registro. */
+async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo, comp, grp }) {
+  const playerUrl = `https://ffcv.es/competiciones/jugadores/jugador.php?codigo=${encodeURIComponent(codJugador)}&cod_competicion=${encodeURIComponent(comp.id)}&cod_grupo=${encodeURIComponent(grp.id)}&cod_temporada=${encodeURIComponent(TARGET_TEMPORADA)}`;
+  const cod = encodeURIComponent(codJugador);
+  const temp = encodeURIComponent(TARGET_TEMPORADA);
+
+  const playerApi = await ffcvFetch(`jugadores/jugador_api.php?codigo=${cod}&cod_temporada=${temp}`);
+  const historyApi = await ffcvFetch(`jugadores/historial_deportivo.php?cod_licencia=${cod}&cod_temporada=${temp}`);
+
+  const parsedName = parsePlayerName(nombreJugador);
+  const history = buildHistory(historyApi);
+  const hasProfile = playerApi && playerApi.estado === '1';
+  const age = hasProfile ? parseInt(playerApi.edad, 10) : NaN;
+  const birthYear = parseBirthYear(playerApi, historyApi);
+
+  return {
+    id: `ffcv-p-${codJugador}`,
+    ffcv_player_id: codJugador,
+    full_name: parsedName.fullName,
+    first_name: parsedName.firstName,
+    last_name: parsedName.lastName,
+    position: (hasProfile && normalizePosition(playerApi.posicion_jugador)) || 'Sense definir',
+    dorsal: hasProfile ? parseDorsal(playerApi.dorsal_jugador) : null,
+    age: isNaN(age) ? null : age,
+    birth_year: birthYear,
+    photo_url: hasProfile ? toPhotoUrl(playerApi.foto, codJugador) : null,
+    team: nombreEquipo,
+    team_id: `ffcv-team-${codEquipo}`,
+    competition: comp.name,
+    group: grp.name,
+    infantil_year: calculateInfantilYear(history, isNaN(age) ? null : age, birthYear),
+    history,
+    sports_data: hasProfile ? buildStats(playerApi) : {},
+    source_url: playerUrl,
+    scraped_at: new Date().toISOString(),
+    _incomplete: !hasProfile || !historyApi
+  };
 }
 
 (async () => {
@@ -589,71 +677,38 @@ async function scrapePlayerWithRetry(page, playerUrl, maxRetries = 2) {
   console.log('⚽ SCRAPER FFCV INFANTIL - PARTIDOS, JUGADORES E HISTORIAL');
   console.log('=====================================================');
   console.log(`Temporada objetivo: 2026-2027 (código ${TARGET_TEMPORADA})`);
-
-  const launchOpts = getChromiumLaunchOptions(headless);
-  const browser = await chromium.launch(launchOpts);
-  const context = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    extraHTTPHeaders: {
-      'Referer': 'https://ffcv.es/competiciones/#partidos'
-    }
-  });
-  const page = await context.newPage();
+  const startedAt = Date.now();
 
   const fieldsCache = new Map(); // codcampo -> info campo (coordenadas, dirección, etc.)
   const allMatches = [];
   const allTeams = [];
   const allPlayers = [];
+  const dataDir = path.join(__dirname, '..', 'src', 'data');
+  ensureDir(dataDir);
 
   try {
-    console.log('\n🌐 Conectando con FFCV...');
-    await page.goto('https://ffcv.es/competiciones/#partidos', { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.evaluate(() => {
-      try { sessionStorage.setItem('ffcv_entry_ok', '1'); } catch(e) {}
-    });
-
-    // Aceptar cookies
-    try {
-      const acceptBtn = await page.waitForSelector('button:has-text("Aceptar"), button:has-text("ACEPTAR"), .cc-btn.cc-allow', { timeout: 3000 });
-      if (acceptBtn) await acceptBtn.click();
-    } catch (e) {}
-
     // ── 0. Comprobar si Segona Infantil ya está disponible en FFCV ──────────
     console.log('\n🔍 Comprobando disponibilidad de Segona Regional Infantil (Grupos 1 al 4 de Castelló)...');
     let segonaComp = null;
-    try {
-      const res = await fetch(`https://ffcv.es/competiciones/api/filtros/competiciones_fetch.php?cod_temporada=${encodeURIComponent(TARGET_TEMPORADA)}`, {
-        headers: { 'User-Agent': 'Mozilla/5.0' }
+    const compsData = await ffcvFetch(`filtros/competiciones_fetch.php?cod_temporada=${encodeURIComponent(TARGET_TEMPORADA)}`);
+    const found = (compsData?.competiciones || []).find(c => {
+      const n = (c.nombre || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      return (n.includes('segona') || n.includes('segunda') || n.includes('2a') || n.includes('2ª') || n.includes('2 regional')) &&
+             n.includes('infantil') && !n.includes('futsal') && !n.includes('platja');
+    });
+    if (found) {
+      const grpData = await ffcvFetch(`filtros/grupos_fetch.php?cod_competicion=${encodeURIComponent(found.codigo)}`);
+      const castellonGroups = (grpData?.grupos || []).filter(g => {
+        const m = g.nombre.match(/\b([1-4])\b/) || g.nombre.match(/grup[^\d]*([1-4])/i);
+        return Boolean(m);
       });
-      if (res.ok) {
-        const data = await res.json();
-        const found = (data.competiciones || []).find(c => {
-          const n = (c.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-          return (n.includes('segona') || n.includes('segunda') || n.includes('2a') || n.includes('2ª') || n.includes('2 regional')) &&
-                 n.includes('infantil') && !n.includes('futsal') && !n.includes('platja');
-        });
-        if (found) {
-          const grpRes = await fetch(`https://ffcv.es/competiciones/api/filtros/grupos_fetch.php?cod_competicion=${encodeURIComponent(found.codigo)}`, {
-            headers: { 'User-Agent': 'Mozilla/5.0' }
-          });
-          if (grpRes.ok) {
-            const grpData = await grpRes.json();
-            const castellonGroups = (grpData.grupos || []).filter(g => {
-              const m = g.nombre.match(/\b([1-4])\b/) || g.nombre.match(/grup[^\d]*([1-4])/i);
-              return Boolean(m);
-            });
-            if (castellonGroups.length > 0) {
-              segonaComp = {
-                id: String(found.codigo),
-                name: found.nombre,
-                groups: castellonGroups.map(g => ({ id: String(g.codigo), name: g.nombre }))
-              };
-            }
-          }
-        }
+      if (castellonGroups.length > 0) {
+        segonaComp = {
+          id: String(found.codigo),
+          name: found.nombre,
+          groups: castellonGroups.map(g => ({ id: String(g.codigo), name: g.nombre }))
+        };
       }
-    } catch (e) {
-      console.warn('⚠️ No se pudo consultar la API de competiciones FFCV:', e.message);
     }
 
     const competitionsToScrape = [...TARGET_COMPETITIONS];
@@ -679,16 +734,7 @@ async function scrapePlayerWithRetry(page, playerUrl, maxRetries = 2) {
         for (const grp of comp.groups) {
           console.log(`  🔹 ${grp.name} (${grp.id})`);
 
-          // Obtener lista de jornadas del grupo
-          const jornadasData = await page.evaluate(async (codGrupo) => {
-            try {
-              const res = await fetch(`https://ffcv.es/competiciones/api/filtros/jornadas_fetch.php?cod_grupo=${encodeURIComponent(codGrupo)}`);
-              return await res.json();
-            } catch (e) {
-              return { error: e.message };
-            }
-          }, grp.id);
-
+          const jornadasData = await ffcvFetch(`filtros/jornadas_fetch.php?cod_grupo=${encodeURIComponent(grp.id)}`);
           const jornadas = Array.isArray(jornadasData?.jornadas) ? jornadasData.jornadas : [];
           console.log(`     Total jornadas: ${jornadas.length}`);
 
@@ -696,48 +742,23 @@ async function scrapePlayerWithRetry(page, playerUrl, maxRetries = 2) {
             const codJornada = jor.codjornada || jor.nombre;
             const jornadaNombre = `Jornada ${jor.nombre || codJornada}`;
 
-            // Obtener partidos de la jornada
-            const partidosData = await page.evaluate(async ({ codGrupo, codJor }) => {
-              try {
-                const res = await fetch(`https://ffcv.es/competiciones/api/partidos/resultados_por_grupo_jornada_data.php?cod_grupo=${encodeURIComponent(codGrupo)}&cod_jornada=${encodeURIComponent(codJor)}`);
-                return await res.json();
-              } catch (e) {
-                return { error: e.message };
-              }
-            }, { codGrupo: grp.id, codJor: codJornada });
-
+            const partidosData = await ffcvFetch(`partidos/resultados_por_grupo_jornada_data.php?cod_grupo=${encodeURIComponent(grp.id)}&cod_jornada=${encodeURIComponent(codJornada)}`);
             const partidosList = Array.isArray(partidosData?.partidos) ? partidosData.partidos : [];
 
-            for (const p of partidosList) {
-              // Obtener ficha detallada del partido (árbitros, código de campo, hora confirmada)
-              let matchDetail = null;
-              let fieldCoords = null;
+            // Ficha detallada de cada partido (árbitros, código de campo, hora confirmada)
+            const details = await mapWithConcurrency(partidosList, 3, (p) =>
+              p.codacta ? ffcvFetch(`partidos/ficha_partido_ajax.php?cod_partido=${encodeURIComponent(p.codacta)}`) : null
+            );
 
-              if (p.codacta) {
-                matchDetail = await page.evaluate(async (codActa) => {
-                  try {
-                    const res = await fetch(`https://ffcv.es/competiciones/api/partidos/ficha_partido_ajax.php?cod_partido=${encodeURIComponent(codActa)}`);
-                    return await res.json();
-                  } catch (e) {
-                    return null;
-                  }
-                }, p.codacta);
-              }
-
+            for (let i = 0; i < partidosList.length; i++) {
+              const p = partidosList[i];
+              const matchDetail = details[i];
               const codigoCampo = matchDetail?.codigo_campo || null;
               const fieldName = matchDetail?.campo || p.campo || 'Por determinar';
 
-              // Obtener coordenadas de la instalación/campo (usando cache)
+              // Coordenadas de la instalación/campo (con cache)
               if (codigoCampo && !fieldsCache.has(codigoCampo)) {
-                const fieldData = await page.evaluate(async (codCampo) => {
-                  try {
-                    const res = await fetch(`https://ffcv.es/competiciones/api/instalaciones/datos_campo.php?Codigo_Campo=${encodeURIComponent(codCampo)}`);
-                    return await res.json();
-                  } catch (e) {
-                    return null;
-                  }
-                }, codigoCampo);
-
+                const fieldData = await ffcvFetch(`instalaciones/datos_campo.php?Codigo_Campo=${encodeURIComponent(codigoCampo)}`);
                 if (fieldData) {
                   fieldsCache.set(codigoCampo, {
                     codigo_campo: codigoCampo,
@@ -753,12 +774,11 @@ async function scrapePlayerWithRetry(page, playerUrl, maxRetries = 2) {
                 }
               }
 
-              fieldCoords = codigoCampo ? fieldsCache.get(codigoCampo) : null;
-
+              const fieldCoords = codigoCampo ? fieldsCache.get(codigoCampo) : null;
               const fechaPart = parseDate(matchDetail?.fecha || p.fecha);
               const horaPart = parseTime(matchDetail?.hora || p.hora);
 
-              const matchRecord = {
+              allMatches.push({
                 id: `ffcv-acta-${p.codacta || `${p.cod_equipo_local}-${p.cod_equipo_visitante}-${fechaPart}`}`,
                 codacta: p.codacta || null,
                 competition: comp.name,
@@ -785,16 +805,19 @@ async function scrapePlayerWithRetry(page, playerUrl, maxRetries = 2) {
                 latitude: fieldCoords?.latitude || null,
                 longitude: fieldCoords?.longitude || null,
                 referees: Array.isArray(matchDetail?.arbitros_partido) ? matchDetail.arbitros_partido.map(a => a.nombre).filter(Boolean) : []
-              };
-
-              allMatches.push(matchRecord);
+              });
             }
-            process.stdout.write(`       ${jornadaNombre}: ${partidosList.length} partidos recogidos\r`);
+            console.log(`       ${jornadaNombre}: ${partidosList.length} partidos recogidos`);
           }
-          console.log(`\n     ✅ Grupo ${grp.name} completado.`);
+          console.log(`     ✅ Grupo ${grp.name} completado.`);
         }
       }
       console.log(`\n🏟️  Total partidos recogidos para la agenda: ${allMatches.length}`);
+
+      // Guardar ya los partidos para no perderlos si la fase de jugadores falla
+      if (allMatches.length > 0) {
+        fs.writeFileSync(path.join(dataDir, 'scraped_matches.json'), JSON.stringify(allMatches, null, 2), 'utf8');
+      }
     }
 
     // ── 2. RASPADO DE EQUIPOS, JUGADORES E HISTORIAL ─────────────────────────────
@@ -809,46 +832,26 @@ async function scrapePlayerWithRetry(page, playerUrl, maxRetries = 2) {
         for (const grp of comp.groups) {
           console.log(`  🔹 Obteniendo equipos de ${grp.name}...`);
 
-          // Obtener equipos del grupo mediante clasificación
-          const classifData = await page.evaluate(async (codGrupo) => {
-            try {
-              const res = await fetch(`https://ffcv.es/competiciones/api/clasificaciones/clasificaciones_ajax.php?cod_grupo=${encodeURIComponent(codGrupo)}&cod_jornada=1`);
-              return await res.json();
-            } catch (e) {
-              return { error: e.message };
-            }
-          }, grp.id);
-
-          let equipos = Array.isArray(classifData?.clasificacion)
+          // Equipos del grupo mediante la clasificación
+          const classifData = await ffcvFetch(`clasificaciones/clasificaciones_ajax.php?cod_grupo=${encodeURIComponent(grp.id)}&cod_jornada=1`);
+          const equipos = Array.isArray(classifData?.clasificacion)
             ? classifData.clasificacion
             : (Array.isArray(classifData?.clasificaciones) ? classifData.clasificaciones : []);
 
           console.log(`     ${equipos.length} equipos en el grupo.`);
+          const teamsToScrape = equipos.slice(0, limitTeams);
+          if (equipos.length > teamsToScrape.length) {
+            console.log(`     ⚠️ Límite de equipos aplicado (--limit-teams ${limitTeams})`);
+          }
 
-          let teamCount = 0;
-          for (const eq of equipos) {
-            if (teamCount >= limitTeams) {
-              console.log(`     ⚠️ Límite de equipos alcanzado (--limit-teams ${limitTeams})`);
-              break;
-            }
-            teamCount++;
-
+          for (let t = 0; t < teamsToScrape.length; t++) {
+            const eq = teamsToScrape[t];
             const codEquipo = eq.codequipo;
             const nombreEquipo = eq.nombre;
-            const crestUrl = formatLogoUrl(eq.url_img);
 
-            console.log(`\n     🏃 [${teamCount}/${Math.min(equipos.length, limitTeams)}] Equipo: ${nombreEquipo} (${codEquipo})`);
+            console.log(`\n     🏃 [${t + 1}/${teamsToScrape.length}] Equipo: ${nombreEquipo} (${codEquipo})`);
 
-            // Obtener plantilla y detalles del equipo
-            const teamDetail = await page.evaluate(async (cod) => {
-              try {
-                const res = await fetch(`https://ffcv.es/competiciones/api/equipos/ver_equipo.php?codequipo=${encodeURIComponent(cod)}`);
-                return await res.json();
-              } catch (e) {
-                return null;
-              }
-            }, codEquipo);
-
+            const teamDetail = await ffcvFetch(`equipos/ver_equipo.php?codequipo=${encodeURIComponent(codEquipo)}`);
             const teamInfo = teamDetail?.j || teamDetail || {};
             const jugadores = Array.isArray(teamInfo.jugadores_equipo) ? teamInfo.jugadores_equipo : [];
 
@@ -857,7 +860,7 @@ async function scrapePlayerWithRetry(page, playerUrl, maxRetries = 2) {
               ffcv_cod: codEquipo,
               name: nombreEquipo,
               club: teamInfo.nombre_club || nombreEquipo,
-              crest_url: crestUrl,
+              crest_url: formatLogoUrl(eq.url_img),
               field_name: teamInfo.campo || null,
               field_code: teamInfo.codigo_campo || null,
               address: teamInfo.domicilio_correspondencia || null,
@@ -871,95 +874,38 @@ async function scrapePlayerWithRetry(page, playerUrl, maxRetries = 2) {
               players_count: jugadores.length
             });
 
+            const playersToScrape = jugadores.slice(0, limitPlayers);
             console.log(`        Plantilla: ${jugadores.length} jugadores.`);
 
-            let playerCount = 0;
-            for (const j of jugadores) {
-              if (playerCount >= limitPlayers) {
-                console.log(`        ⚠️ Límite de jugadores alcanzado (--limit-players ${limitPlayers})`);
-                break;
-              }
-              playerCount++;
+            const records = await mapWithConcurrency(playersToScrape, 3, (j) =>
+              scrapePlayer({ codJugador: j.cod_jugador, nombreJugador: j.nombre, codEquipo, nombreEquipo, comp, grp })
+                .catch((err) => {
+                  console.warn(`        ⚠️ Error en jugador ${j.nombre} (${j.cod_jugador}): ${err.message}`);
+                  return null;
+                })
+            );
 
-              const codJugador = j.cod_jugador;
-              const nombreJugador = j.nombre;
-              const playerUrl = `https://ffcv.es/competiciones/jugadores/jugador.php?codigo=${encodeURIComponent(codJugador)}&cod_competicion=${encodeURIComponent(comp.id)}&cod_grupo=${encodeURIComponent(grp.id)}&cod_temporada=${encodeURIComponent(TARGET_TEMPORADA)}`;
+            records.forEach((rec, idx) => {
+              if (!rec) return;
+              const { _incomplete, ...player } = rec;
+              allPlayers.push(player);
+              const extra = [
+                player.dorsal ? `#${player.dorsal}` : null,
+                player.position !== 'Sense definir' ? player.position : null,
+                _incomplete ? '⚠️ datos incompletos' : null
+              ].filter(Boolean).join(', ');
+              console.log(`        [${idx + 1}/${playersToScrape.length}] ${player.full_name} -> ${player.infantil_year}${extra ? ` (${extra})` : ''}`);
+            });
 
-              // Cargar página de la ficha del jugador con auto-reintento y esperas dinámicas
-              try {
-                const { profileData, history, isWp } = await scrapePlayerWithRetry(page, playerUrl, 2);
-
-                const parsedName = parsePlayerName(nombreJugador);
-
-                if (isWp) {
-                  allPlayers.push({
-                    id: `ffcv-p-${codJugador}`,
-                    ffcv_player_id: codJugador,
-                    full_name: parsedName.fullName,
-                    first_name: parsedName.firstName,
-                    last_name: parsedName.lastName,
-                    position: 'Sense definir',
-                    team: nombreEquipo,
-                    team_id: `ffcv-team-${codEquipo}`,
-                    competition: comp.name,
-                    group: grp.name,
-                    infantil_year: 'Desconocido',
-                    history: [],
-                    sports_data: {},
-                    source_url: playerUrl,
-                    scraped_at: new Date().toISOString()
-                  });
-                  process.stdout.write(`        [${playerCount}/${jugadores.length}] ${parsedName.fullName} -> Ficha privada/no disponible\n`);
-                  continue;
-                }
-
-                // Determinar el año infantil
-                const infantilYear = calculateInfantilYear(history, profileData?.age);
-
-                const playerRecord = {
-                  id: `ffcv-p-${codJugador}`,
-                  ffcv_player_id: codJugador,
-                  full_name: parsedName.fullName,
-                  first_name: parsedName.firstName,
-                  last_name: parsedName.lastName,
-                  position: profileData?.position || 'Sense definir',
-                  dorsal: profileData?.dorsal || null,
-                  age: profileData?.age || null,
-                  photo_url: toPhotoUrl(profileData?.photo, codJugador),
-                  team: nombreEquipo,
-                  team_id: `ffcv-team-${codEquipo}`,
-                  competition: comp.name,
-                  group: grp.name,
-                  infantil_year: infantilYear,
-                  history: history || [],
-                  sports_data: profileData?.stats || {},
-                  source_url: playerUrl,
-                  scraped_at: new Date().toISOString()
-                };
-
-                allPlayers.push(playerRecord);
-                process.stdout.write(`        [${playerCount}/${jugadores.length}] ${parsedName.fullName} -> ${infantilYear}\n`);
-              } catch (playerErr) {
-                console.warn(`        ⚠️ Error en jugador ${nombreJugador} (${codJugador}): ${playerErr.message.split('\n')[0]}`);
-              }
-            }
-
-            // Guardado progresivo por equipo para asegurar persistencia inmediata
-            try {
-              const dataDir = path.join(__dirname, '..', 'src', 'data');
-              ensureDir(dataDir);
-              fs.writeFileSync(path.join(dataDir, 'scraped_players.json'), JSON.stringify(allPlayers, null, 2), 'utf8');
-              fs.writeFileSync(path.join(dataDir, 'scraped_teams.json'), JSON.stringify(allTeams, null, 2), 'utf8');
-            } catch (saveErr) {}
+            // Guardado progresivo por equipo
+            fs.writeFileSync(path.join(dataDir, 'scraped_players.json'), JSON.stringify(allPlayers, null, 2), 'utf8');
+            fs.writeFileSync(path.join(dataDir, 'scraped_teams.json'), JSON.stringify(allTeams, null, 2), 'utf8');
           }
         }
       }
     }
 
     // ── 3. GUARDAR RESULTADOS LOCALES (JSON) ─────────────────────────────────────
-    const dataDir = path.join(__dirname, '..', 'src', 'data');
-    ensureDir(dataDir);
-
     if (allMatches.length > 0) {
       const matchesPath = path.join(dataDir, 'scraped_matches.json');
       fs.writeFileSync(matchesPath, JSON.stringify(allMatches, null, 2), 'utf8');
@@ -977,26 +923,23 @@ async function scrapePlayerWithRetry(page, playerUrl, maxRetries = 2) {
       fs.writeFileSync(playersPath, JSON.stringify(allPlayers, null, 2), 'utf8');
       console.log(`💾 Guardados ${allPlayers.length} jugadores en: ${playersPath}`);
 
-      // Resumen estadístico de año infantil
-      const summaryYears = {
-        'Infantil 1er año': allPlayers.filter(p => p.infantil_year === 'Infantil 1er año').length,
-        'Infantil 2º año': allPlayers.filter(p => p.infantil_year === 'Infantil 2º año').length,
-        'Desconocido': allPlayers.filter(p => p.infantil_year === 'Desconocido').length
-      };
+      const countYear = (y) => allPlayers.filter(p => p.infantil_year === y).length;
       console.log('\n📊 Desglose de Clasificación Infantil:');
-      console.log(`   🔹 Infantil 1er año: ${summaryYears['Infantil 1er año']}`);
-      console.log(`   🔹 Infantil 2º año:  ${summaryYears['Infantil 2º año']}`);
-      console.log(`   🔹 Desconocido:      ${summaryYears['Desconocido']}`);
+      console.log(`   🔹 Infantil 1er año: ${countYear('Infantil 1er año')}`);
+      console.log(`   🔹 Infantil 2º año:  ${countYear('Infantil 2º año')}`);
+      console.log(`   🔹 Alevín 2º año:    ${countYear('Alevín 2º año')}`);
+      console.log(`   🔹 Desconocido:      ${countYear('Desconocido')}`);
+      console.log(`   🔹 Con dorsal:       ${allPlayers.filter(p => p.dorsal).length}`);
+      console.log(`   🔹 Con posición:     ${allPlayers.filter(p => p.position !== 'Sense definir').length}`);
     }
 
     // ── 4. SINCRONIZACIÓN CON SUPABASE (SI ESTÁ ACTIVO) ──────────────────────────
     await trySaveToSupabase(allMatches, allTeams, allPlayers);
 
-    console.log('\n✨ ¡Proceso de scraping finalizado con éxito!');
+    console.log(`\n✨ ¡Proceso de scraping finalizado con éxito en ${Math.round((Date.now() - startedAt) / 1000)}s!`);
 
   } catch (err) {
     console.error('\n❌ Error durante el scraping:', err);
-  } finally {
-    await browser.close();
+    process.exitCode = 1;
   }
 })();

@@ -159,6 +159,7 @@ export interface Player {
   source_url?: string;
   scraped_at?: string;
   is_manual_override?: boolean;
+  position_manual?: boolean; // Posición editada por un seleccionador: el scraper no la sobrescribe
   is_stale?: boolean;
 
   created_at?: string;

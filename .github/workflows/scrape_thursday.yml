@@ -30,9 +30,6 @@ jobs:
       - name: 📦 Instalar dependencias del proyecto
         run: npm ci || npm install
 
-      - name: 🌐 Instalar navegador Chromium para Playwright
-        run: npx playwright install --with-deps chromium
-
       - name: ⚽ Ejecutar Scraping FFCV (Partidos, Campos y Jugadores)
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
@@ -40,6 +37,7 @@ jobs:
         run: node scripts/scrape_ffcv_infantil.cjs
 
       - name: 💾 Guardar datos JSON en el repositorio (Commit & Push)
+        if: ${{ !cancelled() }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"

@@ -16,9 +16,7 @@ import {
   CheckCircle2,
   ChevronRight,
   ShieldAlert,
-  List,
-  UserCheck,
-  Award
+  List
 } from 'lucide-react';
 import clsx from 'clsx';
 import { Card } from '../../components/ui/Card';

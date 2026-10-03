@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Plus, Calendar, MapPin, CheckCircle, LayoutGrid, ShieldAlert } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Plus, Calendar, MapPin, CheckCircle, LayoutGrid, ShieldAlert, Pencil, Trash2 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
@@ -12,10 +12,12 @@ import type { Player } from '../../types/models';
 
 export const Callups: React.FC = () => {
   const { t } = useLanguage();
-  const { callups, createCallup, players } = useAppStore();
+  const { callups, createCallup, updateCallup, deleteCallup, players } = useAppStore();
   const { showToast } = useToast();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingCallupId, setEditingCallupId] = useState<string | null>(null);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [selectedCallupId, setSelectedCallupId] = useState<string>(callups[0]?.id || '');
   const [viewMode, setViewMode] = useState<'pitch' | 'list'>('pitch');
 
@@ -25,7 +27,13 @@ export const Callups: React.FC = () => {
   const [notes, setNotes] = useState('');
 
   const activeCallup = callups.find((c) => c.id === selectedCallupId) || callups[0];
-  const activePlayers = activeCallup?.callup_players?.map((cp) => cp.player!).filter(Boolean) || [];
+  // Dades actuals del jugador (equip, escut, foto) i, si ja no hi és, la còpia guardada a la convocatòria
+  const activePlayers = useMemo(() => {
+    const byId = new Map(players.map((p) => [p.id, p]));
+    return (activeCallup?.callup_players || [])
+      .map((cp) => byId.get(cp.player_id) || cp.player)
+      .filter((p): p is Player => Boolean(p));
+  }, [activeCallup, players]);
 
   // Demarcaciones
   const porteros = activePlayers.filter((p) => p.position === 'Portero');
@@ -39,10 +47,55 @@ export const Callups: React.FC = () => {
     p.position?.includes('Delantero') || p.position?.includes('Extremo') || p.position?.includes('Punta')
   );
 
+  const openCreateModal = () => {
+    setEditingCallupId(null);
+    setTitle('');
+    setDate('');
+    setLocation('Instal·lacions Chencho, Castelló');
+    setNotes('');
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = () => {
+    if (!activeCallup) return;
+    setEditingCallupId(activeCallup.id);
+    setTitle(activeCallup.title);
+    setDate(activeCallup.date ? new Date(activeCallup.date).toISOString().slice(0, 10) : '');
+    setLocation(activeCallup.location || '');
+    setNotes(activeCallup.notes || '');
+    setIsModalOpen(true);
+  };
+
+  const handleDeleteCallup = () => {
+    if (!activeCallup) return;
+    deleteCallup(activeCallup.id);
+    try {
+      localStorage.removeItem(`seleccio_lineup_v1_${activeCallup.id}`);
+    } catch {
+      // Sense emmagatzematge disponible
+    }
+    setSelectedCallupId(callups.find((c) => c.id !== activeCallup.id)?.id || '');
+    setIsDeleteOpen(false);
+    showToast('Convocatòria eliminada', 'success');
+  };
+
   const handleCreateCallup = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !date) {
       showToast('Por favor, indica el título y la fecha', 'error');
+      return;
+    }
+
+    if (editingCallupId) {
+      updateCallup(editingCallupId, {
+        title,
+        date: new Date(date).toISOString(),
+        location,
+        notes
+      });
+      showToast('Convocatòria actualitzada', 'success');
+      setIsModalOpen(false);
+      setEditingCallupId(null);
       return;
     }
 
@@ -82,7 +135,7 @@ export const Callups: React.FC = () => {
           </p>
         </div>
         <button
-          onClick={() => setIsModalOpen(true)}
+          onClick={openCreateModal}
           className="px-5 py-2.5 bg-[#ff6600] hover:bg-orange-600 text-white font-black uppercase tracking-wider text-xs rounded-full shadow-md flex items-center gap-2 transition-all self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
@@ -104,7 +157,7 @@ export const Callups: React.FC = () => {
           </p>
           <div className="pt-2">
             <button
-              onClick={() => setIsModalOpen(true)}
+              onClick={openCreateModal}
               className="px-5 py-2.5 bg-[#ff6600] hover:bg-orange-600 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-md inline-flex items-center gap-2 transition-all"
             >
               <Plus className="w-4 h-4" />
@@ -116,7 +169,7 @@ export const Callups: React.FC = () => {
         <>
           <Card className="p-4 sm:p-5 bg-white border border-slate-200/80 rounded-2xl shadow-sm space-y-3">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 flex-1 max-w-lg">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 flex-1 max-w-2xl">
                 <span className="text-xs font-black uppercase text-[#061338] shrink-0">Convocatòria Activa:</span>
                 <div className="flex-1">
                   <CustomSelect
@@ -128,6 +181,20 @@ export const Callups: React.FC = () => {
                     }))}
                   />
                 </div>
+                <button
+                  onClick={openEditModal}
+                  title="Editar convocatòria"
+                  className="shrink-0 self-start sm:self-auto flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold text-[#061338] bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all"
+                >
+                  <Pencil className="w-3.5 h-3.5" /> Editar
+                </button>
+                <button
+                  onClick={() => setIsDeleteOpen(true)}
+                  title="Eliminar convocatòria"
+                  className="shrink-0 self-start sm:self-auto flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Eliminar
+                </button>
               </div>
 
               <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-full border border-slate-200 overflow-x-auto custom-scrollbar">
@@ -167,7 +234,7 @@ export const Callups: React.FC = () => {
               <Badge status={activeCallup?.status} />
             </div>
 
-            <TacticalPitch key={activeCallup?.id} players={activePlayers} />
+            <TacticalPitch key={activeCallup?.id} callupId={activeCallup?.id} players={activePlayers} />
           </Card>
         </div>
       )}
@@ -236,7 +303,11 @@ export const Callups: React.FC = () => {
       )}
 
       {/* Modal Nueva Convocatoria */}
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Crear Nova Convocatòria">
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingCallupId ? 'Editar Convocatòria' : 'Crear Nova Convocatòria'}
+      >
         <form onSubmit={handleCreateCallup} className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">Títol de la Convocatòria</label>
@@ -295,10 +366,37 @@ export const Callups: React.FC = () => {
               type="submit"
               className="px-4 py-2 bg-[#ff6600] hover:bg-orange-600 text-white text-xs font-bold rounded-full"
             >
-              Guardar Convocatòria
+              {editingCallupId ? 'Guardar Canvis' : 'Guardar Convocatòria'}
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Modal Eliminar Convocatoria */}
+      <Modal isOpen={isDeleteOpen} onClose={() => setIsDeleteOpen(false)} title="Eliminar Convocatòria">
+        <div className="space-y-4">
+          <p className="text-sm">
+            Segur que vols eliminar <strong className="text-white">{activeCallup?.title}</strong>
+            {activeCallup?.date ? ` (${new Date(activeCallup.date).toLocaleDateString('ca-ES')})` : ''}? Es perdran
+            també els jugadors convocats i l'alineació del campograma. Aquesta acció no es pot desfer.
+          </p>
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setIsDeleteOpen(false)}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-full"
+            >
+              Cancel·lar
+            </button>
+            <button
+              type="button"
+              onClick={handleDeleteCallup}
+              className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-full flex items-center gap-1.5"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Eliminar
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

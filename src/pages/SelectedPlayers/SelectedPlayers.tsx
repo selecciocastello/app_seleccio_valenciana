@@ -15,7 +15,10 @@ import {
   Building2,
   CheckCircle2,
   ChevronRight,
-  ShieldAlert
+  ShieldAlert,
+  List,
+  UserCheck,
+  Award
 } from 'lucide-react';
 import clsx from 'clsx';
 import { Card } from '../../components/ui/Card';
@@ -28,7 +31,7 @@ import { useToast } from '../../contexts/ToastContext';
 import type { Player } from '../../types/models';
 import { PlayerPhoto } from '../../components/ui/PlayerPhoto';
 
-type GroupByMode = 'position' | 'team' | 'none';
+type ViewMode = 'list_position' | 'cards_position' | 'team' | 'grid';
 type StatusFilter = 'all' | 'Preseleccionado' | 'Seleccionado' | 'all_pool';
 
 interface PositionGroup {
@@ -36,6 +39,9 @@ interface PositionGroup {
   name: string;
   short: string;
   badgeClass: string;
+  headerBorder: string;
+  headerBg: string;
+  iconBg: string;
   players: Player[];
 }
 
@@ -50,10 +56,10 @@ export const SelectedPlayers: React.FC = () => {
   const { players, callups, updatePlayer, addPlayersToCallup, createCallup } = useAppStore();
   const { showToast } = useToast();
 
-  // Filtros y agrupación
+  // Filtros y modo de visualización (Por defecto 'list_position' = formato lista organizado por posiciones)
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [groupBy, setGroupBy] = useState<GroupByMode>('position');
+  const [viewMode, setViewMode] = useState<ViewMode>('list_position');
   const [ratingFilter, setRatingFilter] = useState<'all' | 'min_4' | 'min_3' | 'unrated'>('all');
 
   // Selección múltiple para convocatorias
@@ -129,7 +135,7 @@ export const SelectedPlayers: React.FC = () => {
     return (sum / rated.length).toFixed(1);
   }, [basePool]);
 
-  // Agrupación por Demarcación / Posición
+  // Agrupación por Demarcación / Posición (Porteros, Defensas, Medios, Delanteros)
   const positionGroups = useMemo<PositionGroup[]>(() => {
     const porters: Player[] = [];
     const defenses: Player[] = [];
@@ -139,15 +145,34 @@ export const SelectedPlayers: React.FC = () => {
 
     filteredPlayers.forEach((p) => {
       const pos = (p.position || '').toLowerCase();
-      if (!pos || pos === 'sense definir' || pos === 'candidato') {
+      if (!pos || pos === 'sense definir' || pos === 'candidato' || pos === 'desconocido') {
         sensePos.push(p);
-      } else if (pos.includes('porter')) {
+      } else if (pos.includes('porter') || pos.includes('arquero') || pos.includes('goalkeeper')) {
         porters.push(p);
-      } else if (pos.includes('defensa') || pos.includes('lateral') || pos.includes('carrilero') || pos.includes('central')) {
+      } else if (
+        pos.includes('defensa') ||
+        pos.includes('lateral') ||
+        pos.includes('carrilero') ||
+        pos.includes('central')
+      ) {
         defenses.push(p);
-      } else if (pos.includes('mig') || pos.includes('pivote') || pos.includes('mediocentro') || pos.includes('mediapunta') || pos.includes('medio')) {
+      } else if (
+        pos.includes('mig') ||
+        pos.includes('pivote') ||
+        pos.includes('mediocentro') ||
+        pos.includes('mediapunta') ||
+        pos.includes('medio') ||
+        pos.includes('interior') ||
+        pos.includes('centrocampista')
+      ) {
         migs.push(p);
-      } else if (pos.includes('delantero') || pos.includes('extrem') || pos.includes('punta') || pos.includes('davanter')) {
+      } else if (
+        pos.includes('delantero') ||
+        pos.includes('extrem') ||
+        pos.includes('punta') ||
+        pos.includes('davanter') ||
+        pos.includes('atacante')
+      ) {
         davanters.push(p);
       } else {
         sensePos.push(p);
@@ -157,30 +182,42 @@ export const SelectedPlayers: React.FC = () => {
     const groups: PositionGroup[] = [
       {
         id: 'porteria',
-        name: 'Porteria',
+        name: 'Porteros / Porters',
         short: 'POR',
-        badgeClass: 'bg-amber-100 text-amber-800 border-amber-300',
+        badgeClass: 'bg-amber-100 text-amber-900 border-amber-300',
+        headerBorder: 'border-l-4 border-amber-500',
+        headerBg: 'bg-amber-50/70',
+        iconBg: 'bg-amber-500 text-white',
         players: porters
       },
       {
         id: 'defensa',
-        name: 'Línia Defensiva (Centrals i Laterals)',
+        name: 'Defensas / Línia Defensiva (Centrals i Laterals)',
         short: 'DEF',
-        badgeClass: 'bg-blue-100 text-blue-800 border-blue-300',
+        badgeClass: 'bg-blue-100 text-blue-900 border-blue-300',
+        headerBorder: 'border-l-4 border-blue-600',
+        headerBg: 'bg-blue-50/70',
+        iconBg: 'bg-blue-700 text-white',
         players: defenses
       },
       {
         id: 'migcamp',
-        name: 'Mig del Camp (Pivots i Mitjos)',
+        name: 'Medios / Mig del Camp (Pivots i Mitjos)',
         short: 'MIG',
-        badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+        badgeClass: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+        headerBorder: 'border-l-4 border-emerald-600',
+        headerBg: 'bg-emerald-50/70',
+        iconBg: 'bg-emerald-600 text-white',
         players: migs
       },
       {
         id: 'atac',
-        name: 'Atac i Davantera (Extrems i Davanters)',
+        name: 'Delanteros / Atac i Davantera (Extrems i Davanters)',
         short: 'DAV',
-        badgeClass: 'bg-orange-100 text-orange-800 border-orange-300',
+        badgeClass: 'bg-orange-100 text-orange-900 border-orange-300',
+        headerBorder: 'border-l-4 border-[#ff6600]',
+        headerBg: 'bg-orange-50/70',
+        iconBg: 'bg-[#ff6600] text-white',
         players: davanters
       }
     ];
@@ -188,9 +225,12 @@ export const SelectedPlayers: React.FC = () => {
     if (sensePos.length > 0) {
       groups.push({
         id: 'sense_posicio',
-        name: 'Sense Posició Definida',
+        name: 'Sense Posició Definida / Polivalents',
         short: 'PEND',
         badgeClass: 'bg-slate-100 text-slate-700 border-slate-300',
+        headerBorder: 'border-l-4 border-slate-400',
+        headerBg: 'bg-slate-100/70',
+        iconBg: 'bg-slate-500 text-white',
         players: sensePos
       });
     }
@@ -327,7 +367,7 @@ export const SelectedPlayers: React.FC = () => {
             <span>JUGADORS SELECCIONATS I PRESELECCIONATS</span>
           </h1>
           <p className="text-xs font-semibold text-slate-600 mt-1">
-            Gestió de la plantilla oficial, valoració tècnica de 1 a 5 estrelles i generació de convocatòries
+            Plantilla oficial organitzada per posicions, llistat d'accés ràpid, valoració de 1 a 5 estrelles i gestió de convocatòries
           </p>
         </div>
 
@@ -336,7 +376,7 @@ export const SelectedPlayers: React.FC = () => {
           {selectedPlayerIds.length > 0 && (
             <button
               onClick={handleOpenAddModal}
-              className="px-5 py-2.5 bg-[#ff6600] hover:bg-orange-600 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-md flex items-center gap-2 transition-all animate-pulse"
+              className="px-5 py-2.5 bg-[#ff6600] hover:bg-orange-600 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-md flex items-center gap-2 transition-all animate-pulse cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Convocar ({selectedPlayerIds.length}) a Convocatòria</span>
@@ -399,16 +439,16 @@ export const SelectedPlayers: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. Barra de Controls: Filtres, Agrupació i Búsqueda */}
+      {/* 3. Barra de Controls: Filtres, Mode de Vista i Búsqueda */}
       <Card className="p-4 bg-white border border-slate-200 shadow-sm space-y-3.5">
-        {/* Fila 1: Filtres d'Estat i Botons d'Agrupació */}
+        {/* Fila 1: Filtres d'Estat i Botons de Format de Vista */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           {/* Pestanyes d'Estat */}
           <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 overflow-x-auto custom-scrollbar">
             <button
               onClick={() => setStatusFilter('all')}
               className={clsx(
-                'px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap',
+                'px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer',
                 statusFilter === 'all'
                   ? 'bg-[#061338] text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -419,7 +459,7 @@ export const SelectedPlayers: React.FC = () => {
             <button
               onClick={() => setStatusFilter('Preseleccionado')}
               className={clsx(
-                'px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap flex items-center gap-1.5',
+                'px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer',
                 statusFilter === 'Preseleccionado'
                   ? 'bg-amber-500 text-white shadow-xs'
                   : 'text-amber-800 hover:bg-amber-100'
@@ -431,7 +471,7 @@ export const SelectedPlayers: React.FC = () => {
             <button
               onClick={() => setStatusFilter('Seleccionado')}
               className={clsx(
-                'px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap flex items-center gap-1.5',
+                'px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer',
                 statusFilter === 'Seleccionado'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-emerald-800 hover:bg-emerald-100'
@@ -443,7 +483,7 @@ export const SelectedPlayers: React.FC = () => {
             <button
               onClick={() => setStatusFilter('all_pool')}
               className={clsx(
-                'px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap',
+                'px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer',
                 statusFilter === 'all_pool'
                   ? 'bg-slate-700 text-white shadow-xs'
                   : 'text-slate-500 hover:text-slate-800'
@@ -454,47 +494,70 @@ export const SelectedPlayers: React.FC = () => {
             </button>
           </div>
 
-          {/* Selector de Mode d'Agrupació */}
+          {/* Selector de Mode de Vista: Llista (Defecte) vs Targetes vs Equip vs Graella */}
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-black uppercase text-slate-500 tracking-wider">
-              Agrupar per:
+              Vista:
             </span>
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+              {/* 1. LLISTA PER POSICIÓ (EL PRIMER PER DEFECTE) */}
               <button
-                onClick={() => setGroupBy('position')}
+                onClick={() => setViewMode('list_position')}
                 className={clsx(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all whitespace-nowrap',
-                  groupBy === 'position'
-                    ? 'bg-white text-[#061338] shadow-xs border border-slate-200'
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all whitespace-nowrap cursor-pointer',
+                  viewMode === 'list_position'
+                    ? 'bg-[#061338] text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 )}
+                title="Format de Llista organitzat per Posicions (Porteros, Defensas, Medios, Delanteros)"
               >
-                <Layers className="w-3.5 h-3.5 text-[#ff6600]" />
-                <span>Posició</span>
+                <List className={clsx('w-3.5 h-3.5', viewMode === 'list_position' ? 'text-[#ff6600]' : 'text-slate-500')} />
+                <span>Llista (Posicions)</span>
               </button>
+
+              {/* 2. TARGETES PER POSICIÓ */}
               <button
-                onClick={() => setGroupBy('team')}
+                onClick={() => setViewMode('cards_position')}
                 className={clsx(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all whitespace-nowrap',
-                  groupBy === 'team'
-                    ? 'bg-white text-[#061338] shadow-xs border border-slate-200'
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all whitespace-nowrap cursor-pointer',
+                  viewMode === 'cards_position'
+                    ? 'bg-[#061338] text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 )}
+                title="Format de Targetes amples per Posicions"
               >
-                <Building2 className="w-3.5 h-3.5 text-sky-600" />
-                <span>Equip / Club</span>
+                <Layers className={clsx('w-3.5 h-3.5', viewMode === 'cards_position' ? 'text-sky-300' : 'text-slate-500')} />
+                <span>Targetes</span>
               </button>
+
+              {/* 3. PER EQUIP / CLUB */}
               <button
-                onClick={() => setGroupBy('none')}
+                onClick={() => setViewMode('team')}
                 className={clsx(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all whitespace-nowrap',
-                  groupBy === 'none'
-                    ? 'bg-white text-[#061338] shadow-xs border border-slate-200'
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all whitespace-nowrap cursor-pointer',
+                  viewMode === 'team'
+                    ? 'bg-[#061338] text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 )}
+                title="Agrupats per Equip / Club"
               >
-                <LayoutGrid className="w-3.5 h-3.5 text-slate-500" />
-                <span>Graella</span>
+                <Building2 className={clsx('w-3.5 h-3.5', viewMode === 'team' ? 'text-emerald-300' : 'text-slate-500')} />
+                <span>Equips</span>
+              </button>
+
+              {/* 4. GRAELLA TOTAL */}
+              <button
+                onClick={() => setViewMode('grid')}
+                className={clsx(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all whitespace-nowrap cursor-pointer',
+                  viewMode === 'grid'
+                    ? 'bg-[#061338] text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                )}
+                title="Tots els jugadors en graella"
+              >
+                <LayoutGrid className={clsx('w-3.5 h-3.5', viewMode === 'grid' ? 'text-amber-300' : 'text-slate-500')} />
+                <span>Graella Total</span>
               </button>
             </div>
           </div>
@@ -527,19 +590,19 @@ export const SelectedPlayers: React.FC = () => {
 
             {/* Selecció Ràpida per a Convocatòria */}
             <button
-              onClick={selectedPlayerIds.length === filteredPlayers.length ? deselectAll : selectAllFiltered}
-              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-black transition-colors shrink-0 flex items-center gap-1.5"
+              onClick={selectedPlayerIds.length === filteredPlayers.length && filteredPlayers.length > 0 ? deselectAll : selectAllFiltered}
+              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-black transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer"
               title="Seleccionar o deseleccionar tots els jugadors mostrats"
             >
               {selectedPlayerIds.length > 0 && selectedPlayerIds.length === filteredPlayers.length ? (
                 <>
                   <CheckSquare className="w-3.5 h-3.5 text-[#ff6600]" />
-                  <span>Deseleccionar</span>
+                  <span>Deseleccionar Tots</span>
                 </>
               ) : (
                 <>
                   <Square className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Seleccionar Tots</span>
+                  <span>Seleccionar Tots ({filteredPlayers.length})</span>
                 </>
               )}
             </button>
@@ -547,7 +610,7 @@ export const SelectedPlayers: React.FC = () => {
         </div>
       </Card>
 
-      {/* 4. Llistat / Agrupacions de Jugadors */}
+      {/* 4. Contingut Principal: Llistat / Agrupacions */}
       {filteredPlayers.length === 0 ? (
         <Card className="p-12 text-center bg-white border border-dashed border-slate-200 shadow-sm space-y-3">
           <div className="w-16 h-16 rounded-full bg-orange-50 text-[#ff6600] mx-auto flex items-center justify-center">
@@ -562,8 +625,352 @@ export const SelectedPlayers: React.FC = () => {
         </Card>
       ) : (
         <>
-          {/* Mode 1: Agrupat per Posició / Demarcació */}
-          {groupBy === 'position' && (
+          {/* ========================================================= */}
+          {/* MODE 1: LLISTA PER POSICIÓ (EL FORMAT SOL·LICITAT PER DEFECTE) */}
+          {/* ========================================================= */}
+          {viewMode === 'list_position' && (
+            <div className="space-y-6">
+              {positionGroups.map((group) => {
+                if (group.players.length === 0) return null;
+                const groupSelectedCount = group.players.filter((p) => selectedPlayerIds.includes(p.id)).length;
+                const isAllGroupSelected = groupSelectedCount === group.players.length;
+
+                return (
+                  <div key={group.id} className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden transition-all">
+                    {/* Header de la Línia / Posició */}
+                    <div className={clsx('p-3.5 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80', group.headerBg, group.headerBorder)}>
+                      <div className="flex items-center gap-3">
+                        <span className={clsx('px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider border shadow-2xs', group.badgeClass)}>
+                          {group.short}
+                        </span>
+                        <div>
+                          <h2 className="text-sm sm:text-base font-black text-[#061338] uppercase tracking-wide flex items-center gap-2">
+                            <span>{group.name}</span>
+                          </h2>
+                          <span className="text-[11px] font-bold text-slate-500">
+                            {group.players.length} {group.players.length === 1 ? 'jugador' : 'jugadors'} a la plantilla
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Botó per seleccionar/deseleccionar tota la línia */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const groupIds = group.players.map((p) => p.id);
+                          if (isAllGroupSelected) {
+                            setSelectedPlayerIds((prev) => prev.filter((id) => !groupIds.includes(id)));
+                          } else {
+                            setSelectedPlayerIds((prev) => Array.from(new Set([...prev, ...groupIds])));
+                          }
+                        }}
+                        className={clsx(
+                          'self-start sm:self-auto px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer border',
+                          isAllGroupSelected
+                            ? 'bg-[#061338] text-white border-[#061338] shadow-xs'
+                            : 'bg-white/80 hover:bg-white text-slate-700 border-slate-300 shadow-2xs'
+                        )}
+                      >
+                        {isAllGroupSelected ? (
+                          <>
+                            <CheckSquare className="w-3.5 h-3.5 text-[#ff6600]" />
+                            <span>Deseleccionar línia</span>
+                          </>
+                        ) : (
+                          <>
+                            <Square className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Seleccionar línia ({group.players.length})</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Format Llista Desktop (Taula Neta i Compacta) */}
+                    <div className="hidden md:block overflow-x-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-black uppercase text-[10px] tracking-wider">
+                            <th className="py-2.5 px-3 w-10 text-center">Triar</th>
+                            <th className="py-2.5 px-2 w-12 text-center">Dorsal</th>
+                            <th className="py-2.5 px-3 min-w-[200px]">Jugador</th>
+                            <th className="py-2.5 px-3 min-w-[140px]">Posició Específica</th>
+                            <th className="py-2.5 px-3 min-w-[150px]">Equip / Club</th>
+                            <th className="py-2.5 px-3 text-center whitespace-nowrap">Edat / Any</th>
+                            <th className="py-2.5 px-3 min-w-[140px]">Valoració ⭐</th>
+                            <th className="py-2.5 px-3 text-center whitespace-nowrap">Partits / Gols</th>
+                            <th className="py-2.5 px-3 text-center whitespace-nowrap">Estat</th>
+                            <th className="py-2.5 px-3 text-right">Fitxa</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {group.players.map((player) => {
+                            const isSelected = selectedPlayerIds.includes(player.id);
+                            const stats = {
+                              matches: Number(player.sports_data?.Jugados || player.sports_data?.matches_played || 0),
+                              goals: Number(player.sports_data?.Goles || player.sports_data?.goals || 0)
+                            };
+                            const currentPos = player.position && player.position !== 'Candidato' ? player.position : 'Sense definir';
+
+                            return (
+                              <tr
+                                key={player.id}
+                                className={clsx(
+                                  'transition-colors duration-150 group',
+                                  isSelected
+                                    ? 'bg-sky-50/70 hover:bg-sky-50'
+                                    : 'hover:bg-slate-50/80 bg-white'
+                                )}
+                              >
+                                {/* 1. Checkbox */}
+                                <td className="py-2.5 px-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => toggleSelectPlayer(player.id, e)}
+                                    className="p-1 rounded hover:bg-black/5 transition-colors cursor-pointer"
+                                    title={isSelected ? 'Deseleccionar jugador' : 'Seleccionar jugador'}
+                                  >
+                                    {isSelected ? (
+                                      <CheckSquare className="w-4 h-4 text-[#ff6600]" />
+                                    ) : (
+                                      <Square className="w-4 h-4 text-slate-400 group-hover:text-slate-600" />
+                                    )}
+                                  </button>
+                                </td>
+
+                                {/* 2. Dorsal */}
+                                <td className="py-2.5 px-2 text-center">
+                                  <JerseyBadge number={player.jersey_number} size="xs" variant="kit" color="blue" />
+                                </td>
+
+                                {/* 3. Jugador (Foto + Nom + Enllaç) */}
+                                <td className="py-2.5 px-3">
+                                  <div className="flex items-center gap-2.5">
+                                    <Link to={`/jugadores/${player.id}`} className="shrink-0 group/photo">
+                                      <PlayerPhoto
+                                        src={player.photo_url}
+                                        alt={player.full_name}
+                                        firstName={player.first_name}
+                                        lastName={player.last_name}
+                                        imgClassName="w-9 h-9 rounded-xl object-cover border border-slate-200 shadow-2xs group-hover/photo:ring-2 group-hover/photo:ring-[#ff6600] transition-all bg-slate-100"
+                                        fallbackClassName="w-9 h-9 rounded-xl bg-[#002568] text-white flex items-center justify-center font-black text-xs uppercase shadow-2xs group-hover/photo:ring-2 group-hover/photo:ring-[#ff6600] transition-all"
+                                      />
+                                    </Link>
+                                    <div className="min-w-0">
+                                      <Link
+                                        to={`/jugadores/${player.id}`}
+                                        className="font-black text-[#061338] hover:text-[#ff6600] uppercase truncate block transition-colors leading-tight"
+                                      >
+                                        {player.full_name}
+                                      </Link>
+                                      <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-semibold mt-0.5">
+                                        {player.infantil_year && (
+                                          <span className="text-slate-600 font-bold">
+                                            {player.infantil_year === 'Infantil 2º año' ? '2n Any' : player.infantil_year === 'Infantil 1er año' ? '1r Any' : player.infantil_year}
+                                          </span>
+                                        )}
+                                        {player.birth_year && (
+                                          <span className="text-[#002568] font-bold font-mono">({player.birth_year})</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+
+                                {/* 4. Posició específica */}
+                                <td className="py-2.5 px-3">
+                                  <div className="flex flex-col gap-1">
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-black uppercase tracking-wider bg-sky-50 text-[#002568] border border-sky-200 self-start">
+                                      {currentPos}
+                                    </span>
+                                    {player.secondary_position && player.secondary_position !== 'Sense definir' && (
+                                      <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 self-start">
+                                        Alt: {player.secondary_position}
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+
+                                {/* 5. Club / Equip */}
+                                <td className="py-2.5 px-3">
+                                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 truncate max-w-[180px]">
+                                    {player.team?.crest_url ? (
+                                      <img
+                                        src={player.team.crest_url}
+                                        alt={player.team.name}
+                                        className="w-4 h-4 object-contain shrink-0"
+                                        onError={(e) => {
+                                          (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                        }}
+                                      />
+                                    ) : (
+                                      <Shield className="w-3.5 h-3.5 text-[#ff6600] shrink-0" />
+                                    )}
+                                    <span className="truncate">{player.team?.name || 'Sense equip'}</span>
+                                  </div>
+                                </td>
+
+                                {/* 6. Edat */}
+                                <td className="py-2.5 px-3 text-center">
+                                  <span className="text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">
+                                    {player.age ? `${player.age} anys` : '13 anys'}
+                                  </span>
+                                </td>
+
+                                {/* 7. Valoració Tècnica (⭐ Estrelles Interactives) */}
+                                <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex items-center gap-2">
+                                    <StarRating
+                                      rating={player.rating || 0}
+                                      onChange={(newRating) => handleRatingChange(player, newRating)}
+                                      size="sm"
+                                    />
+                                    <span className="text-[10px] font-black text-slate-600 whitespace-nowrap">
+                                      {player.rating ? `${player.rating}★` : '-'}
+                                    </span>
+                                  </div>
+                                </td>
+
+                                {/* 8. Estadístiques FFCV */}
+                                <td className="py-2.5 px-3 text-center">
+                                  <div className="inline-flex items-center gap-2 text-xs font-bold">
+                                    <span className="text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded" title="Partits Jugats">
+                                      {stats.matches} PJ
+                                    </span>
+                                    <span
+                                      className={clsx(
+                                        'px-1.5 py-0.5 rounded font-black',
+                                        stats.goals > 0
+                                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                          : 'text-slate-500 bg-slate-50'
+                                      )}
+                                      title="Gols Marcats"
+                                    >
+                                      {stats.goals} {stats.goals === 1 ? 'gol' : 'gols'}
+                                    </span>
+                                  </div>
+                                </td>
+
+                                {/* 9. Estat */}
+                                <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                  <Badge status={player.status} />
+                                </td>
+
+                                {/* 10. Fitxa */}
+                                <td className="py-2.5 px-3 text-right">
+                                  <Link
+                                    to={`/jugadores/${player.id}`}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-[#061338] text-slate-700 hover:text-white rounded-lg text-[11px] font-black uppercase tracking-wider transition-colors shadow-2xs"
+                                  >
+                                    <span>Fitxa</span>
+                                    <ChevronRight className="w-3 h-3" />
+                                  </Link>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Format Llista Mòbil (Files Compactes d'Alta Densitat) */}
+                    <div className="md:hidden divide-y divide-slate-100">
+                      {group.players.map((player) => {
+                        const isSelected = selectedPlayerIds.includes(player.id);
+                        const stats = {
+                          matches: Number(player.sports_data?.Jugados || player.sports_data?.matches_played || 0),
+                          goals: Number(player.sports_data?.Goles || player.sports_data?.goals || 0)
+                        };
+                        const currentPos = player.position && player.position !== 'Candidato' ? player.position : 'Sense definir';
+
+                        return (
+                          <div
+                            key={player.id}
+                            className={clsx(
+                              'p-3 transition-colors',
+                              isSelected ? 'bg-sky-50/70' : 'bg-white'
+                            )}
+                          >
+                            <div className="flex items-start gap-2.5">
+                              {/* Checkbox */}
+                              <button
+                                type="button"
+                                onClick={(e) => toggleSelectPlayer(player.id, e)}
+                                className="mt-1 p-1 rounded hover:bg-black/5"
+                              >
+                                {isSelected ? (
+                                  <CheckSquare className="w-4 h-4 text-[#ff6600]" />
+                                ) : (
+                                  <Square className="w-4 h-4 text-slate-400" />
+                                )}
+                              </button>
+
+                              {/* Foto */}
+                              <Link to={`/jugadores/${player.id}`} className="shrink-0">
+                                <PlayerPhoto
+                                  src={player.photo_url}
+                                  alt={player.full_name}
+                                  firstName={player.first_name}
+                                  lastName={player.last_name}
+                                  imgClassName="w-10 h-10 rounded-xl object-cover border border-slate-200"
+                                  fallbackClassName="w-10 h-10 rounded-xl bg-[#002568] text-white flex items-center justify-center font-black text-xs uppercase"
+                                />
+                              </Link>
+
+                              {/* Info Jugador */}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-1">
+                                  <Link
+                                    to={`/jugadores/${player.id}`}
+                                    className="font-black text-xs text-[#061338] uppercase truncate block"
+                                  >
+                                    {player.full_name}
+                                  </Link>
+                                  <Badge status={player.status} />
+                                </div>
+
+                                <div className="flex items-center gap-2 text-[11px] font-bold text-slate-600 mt-0.5">
+                                  <span className="truncate">{player.team?.name || 'Sense equip'}</span>
+                                  <span>•</span>
+                                  <span className="text-[#002568] font-black uppercase text-[10px]">{currentPos}</span>
+                                </div>
+
+                                <div className="flex items-center justify-between mt-2 pt-1 border-t border-slate-100">
+                                  <div onClick={(e) => e.stopPropagation()}>
+                                    <StarRating
+                                      rating={player.rating || 0}
+                                      onChange={(newRating) => handleRatingChange(player, newRating)}
+                                      size="xs"
+                                    />
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-bold text-slate-600">
+                                      {stats.matches} PJ / {stats.goals} G
+                                    </span>
+                                    <Link
+                                      to={`/jugadores/${player.id}`}
+                                      className="px-2 py-0.5 bg-[#061338] text-white text-[10px] font-black uppercase rounded"
+                                    >
+                                      Fitxa &gt;
+                                    </Link>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* MODE 2: TARGETES PER POSICIÓ */}
+          {/* ========================================================= */}
+          {viewMode === 'cards_position' && (
             <div className="space-y-8">
               {positionGroups.map((group) => {
                 if (group.players.length === 0) return null;
@@ -594,7 +1001,7 @@ export const SelectedPlayers: React.FC = () => {
                             setSelectedPlayerIds((prev) => Array.from(new Set([...prev, ...groupIds])));
                           }
                         }}
-                        className="text-[11px] font-black text-slate-600 hover:text-[#061338] transition-colors"
+                        className="text-[11px] font-black text-slate-600 hover:text-[#061338] transition-colors cursor-pointer"
                       >
                         {groupSelectedCount === group.players.length
                           ? 'Deseleccionar línia'
@@ -620,8 +1027,10 @@ export const SelectedPlayers: React.FC = () => {
             </div>
           )}
 
-          {/* Mode 2: Agrupat per Equip / Club */}
-          {groupBy === 'team' && (
+          {/* ========================================================= */}
+          {/* MODE 3: AGRUPAT PER EQUIP / CLUB */}
+          {/* ========================================================= */}
+          {viewMode === 'team' && (
             <div className="space-y-8">
               {teamGroups.map((group) => {
                 const groupSelectedCount = group.players.filter((p) => selectedPlayerIds.includes(p.id)).length;
@@ -660,7 +1069,7 @@ export const SelectedPlayers: React.FC = () => {
                             setSelectedPlayerIds((prev) => Array.from(new Set([...prev, ...groupIds])));
                           }
                         }}
-                        className="text-[11px] font-black text-slate-600 hover:text-[#061338] transition-colors"
+                        className="text-[11px] font-black text-slate-600 hover:text-[#061338] transition-colors cursor-pointer"
                       >
                         {groupSelectedCount === group.players.length
                           ? 'Deseleccionar equip'
@@ -686,8 +1095,10 @@ export const SelectedPlayers: React.FC = () => {
             </div>
           )}
 
-          {/* Mode 3: Graella Completa Sense Agrupar */}
-          {groupBy === 'none' && (
+          {/* ========================================================= */}
+          {/* MODE 4: GRAELLA TOTAL */}
+          {/* ========================================================= */}
+          {viewMode === 'grid' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredPlayers.map((player) => (
                 <PlayerCardInteractive
@@ -724,13 +1135,13 @@ export const SelectedPlayers: React.FC = () => {
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <button
                 onClick={deselectAll}
-                className="flex-1 sm:flex-none px-3 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-colors"
+                className="flex-1 sm:flex-none px-3 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
               >
                 Cancel·lar
               </button>
               <button
                 onClick={handleOpenAddModal}
-                className="flex-1 sm:flex-none px-5 py-2 bg-[#ff6600] hover:bg-orange-600 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2"
+                className="flex-1 sm:flex-none px-5 py-2 bg-[#ff6600] hover:bg-orange-600 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Afegir a Convocatòria</span>
@@ -753,7 +1164,7 @@ export const SelectedPlayers: React.FC = () => {
               type="button"
               onClick={() => setModalTab('existing')}
               className={clsx(
-                'flex-1 py-2 text-xs font-black uppercase tracking-wider rounded-lg transition-all',
+                'flex-1 py-2 text-xs font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer',
                 modalTab === 'existing'
                   ? 'bg-white text-[#061338] shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -765,7 +1176,7 @@ export const SelectedPlayers: React.FC = () => {
               type="button"
               onClick={() => setModalTab('new')}
               className={clsx(
-                'flex-1 py-2 text-xs font-black uppercase tracking-wider rounded-lg transition-all',
+                'flex-1 py-2 text-xs font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer',
                 modalTab === 'new'
                   ? 'bg-white text-[#061338] shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -786,7 +1197,7 @@ export const SelectedPlayers: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setModalTab('new')}
-                    className="px-4 py-2 bg-[#ff6600] text-white rounded-xl text-xs font-black uppercase tracking-wider"
+                    className="px-4 py-2 bg-[#ff6600] text-white rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer"
                   >
                     Crear la Primera Convocatòria
                   </button>
@@ -844,13 +1255,13 @@ export const SelectedPlayers: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setIsModalOpen(false)}
-                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors"
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
                     >
                       Cancel·lar
                     </button>
                     <button
                       type="submit"
-                      className="px-5 py-2 bg-[#ff6600] hover:bg-orange-600 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-md transition-all flex items-center gap-2"
+                      className="px-5 py-2 bg-[#ff6600] hover:bg-orange-600 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
                     >
                       <CheckCircle2 className="w-4 h-4" />
                       <span>Confirmar i Afegir</span>
@@ -928,13 +1339,13 @@ export const SelectedPlayers: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
                 >
                   Cancel·lar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#ff6600] hover:bg-orange-600 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-md transition-all flex items-center gap-2"
+                  className="px-5 py-2 bg-[#ff6600] hover:bg-orange-600 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Crear i Convocar</span>

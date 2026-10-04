@@ -21,6 +21,9 @@ export const Badge: React.FC<BadgeProps> = ({ status, variant, children, classNa
       case 'Preseleccionado':
         styleClass = 'bg-amber-50 text-amber-700 border-amber-200 font-bold';
         break;
+      case 'Interesante':
+        styleClass = 'bg-violet-50 text-violet-700 border-violet-200 font-bold';
+        break;
       case 'Observado':
         styleClass = 'bg-sky-50 text-sky-700 border-sky-200 font-bold';
         break;

@@ -249,7 +249,7 @@ const PitchCard: React.FC<PitchCardProps> = ({ player, selected, onDragStart, on
             <img
               src={player.team.crest_url}
               alt=""
-              className="w-3 h-3 object-contain shrink-0"
+              className="w-3.5 h-3.5 object-contain shrink-0 bg-white rounded p-0.5 border border-slate-200"
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).style.display = 'none';
               }}

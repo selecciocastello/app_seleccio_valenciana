@@ -156,6 +156,25 @@ async function main() {
       }
     }
 
+    // Posiciones editadas por un seleccionador: mandan sobre las de la FFCV
+    const manualPositions = new Map();
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await supabase
+        .from('players')
+        .select('source_player_id, position')
+        .eq('source', 'ffcv_scraping')
+        .eq('position_manual', true)
+        .range(from, from + 999);
+      if (error) {
+        console.error('❌ No se pudieron leer las posiciones manuales; se aborta para no sobrescribirlas:', error.message);
+        process.exit(1);
+      }
+      for (const row of data || []) {
+        if (row.source_player_id) manualPositions.set(String(row.source_player_id), row.position || '');
+      }
+      if (!data || data.length < 1000) break;
+    }
+
     const playersMap = new Map();
     for (const p of rawPlayers) {
       const sourcePlayerId = String(p.ffcv_player_id || p.source_player_id || p.id || '');
@@ -175,13 +194,13 @@ async function main() {
       playersMap.set(sourcePlayerId, {
         first_name: firstName,
         last_name: lastName,
-        position: p.position || 'Candidato',
+        position: manualPositions.has(sourcePlayerId) ? manualPositions.get(sourcePlayerId) : (p.position || 'Candidato'),
         jersey_number: cleanJersey,
         photo_url: toPhotoUrl(p.photo_url, sourcePlayerId),
         team_id: teamId || null,
         city: p.city || 'Castelló',
         province: p.province || 'Castelló',
-        status: 'Candidato',
+        // status no se envía: lo gestionan los seleccionadores (en altas nuevas la BD pone 'Candidato')
         infantil_year: p.infantil_year || 'Desconocido',
         age: p.age ? parseInt(p.age, 10) : null,
         history: p.history || [],

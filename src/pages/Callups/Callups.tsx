@@ -9,6 +9,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useAppStore } from '../../hooks/useAppStore';
 import { useToast } from '../../contexts/ToastContext';
 import type { Player } from '../../types/models';
+import { formatAppDate, formatAppDateLong } from '../../utils/dateFormatter';
 
 export const Callups: React.FC = () => {
   const { t } = useLanguage();
@@ -177,7 +178,7 @@ export const Callups: React.FC = () => {
                     onChange={setSelectedCallupId}
                     options={callups.map((c) => ({
                       value: c.id,
-                      label: `${c.title} (${new Date(c.date).toLocaleDateString('ca-ES')})`,
+                      label: `${c.title} (${formatAppDate(c.date)})`,
                     }))}
                   />
                 </div>
@@ -227,7 +228,7 @@ export const Callups: React.FC = () => {
                 <h2 className="text-base font-black text-[#061338] uppercase">{activeCallup?.title}</h2>
                 <p className="text-xs text-slate-500 font-semibold flex items-center gap-2 mt-0.5">
                   <Calendar className="w-3.5 h-3.5 text-[#ff6600]" />
-                  {new Date(activeCallup?.date || Date.now()).toLocaleDateString('ca-ES')} •
+                  {formatAppDateLong(activeCallup?.date || Date.now())} •
                   <MapPin className="w-3.5 h-3.5 text-slate-400" /> {activeCallup?.location}
                 </p>
               </div>
@@ -377,7 +378,7 @@ export const Callups: React.FC = () => {
         <div className="space-y-4">
           <p className="text-sm">
             Segur que vols eliminar <strong className="text-white">{activeCallup?.title}</strong>
-            {activeCallup?.date ? ` (${new Date(activeCallup.date).toLocaleDateString('ca-ES')})` : ''}? Es perdran
+            {activeCallup?.date ? ` (${formatAppDate(activeCallup.date)})` : ''}? Es perdran
             també els jugadors convocats i l'alineació del campograma. Aquesta acció no es pot desfer.
           </p>
           <div className="flex justify-end gap-3">

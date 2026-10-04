@@ -333,8 +333,9 @@ if (!globalThis.WebSocket) {
 
 /**
  * Devuelve Map<source_player_id, position> de los jugadores cuya posición ha editado
- * un seleccionador (position_manual = true). La posición alternativa no hace falta
- * protegerla: el scraper nunca la envía, así que el upsert no la toca.
+ * un seleccionador (position_manual = true). El resto de datos del seleccionador
+ * (estado, valoración, posición alternativa, pie, contacto, notas) no hace falta
+ * protegerlos: el scraper nunca los envía, así que el upsert no los toca.
  * Si la columna aún no existe (migración sin aplicar), conserva cualquier posición
  * que no venga del scraper, para no perder ediciones.
  */
@@ -361,9 +362,11 @@ async function fetchManualPositions(supabase) {
     }
 
     for (const row of data || []) {
-      if (!row.source_player_id || !row.position) continue;
-      if (useFallback && ['Sense definir', 'Candidato'].includes(row.position)) continue;
-      result.set(String(row.source_player_id), row.position);
+      if (!row.source_player_id) continue;
+      // Sin la columna no sabemos qué es manual: solo se conservan posiciones con valor real
+      if (useFallback && (!row.position || ['Sense definir', 'Candidato'].includes(row.position))) continue;
+      // Con position_manual se conserva incluso una posición vaciada a propósito ("Sense definir")
+      result.set(String(row.source_player_id), row.position || '');
     }
     if (!data || data.length < pageSize) break;
   }

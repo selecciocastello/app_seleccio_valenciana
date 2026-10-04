@@ -1,6 +1,5 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../hooks/useAppStore';
-import { useAuth } from '../../contexts/AuthContext';
 import {
   CalendarCheck,
   Calendar,
@@ -16,28 +15,36 @@ import {
   FileText,
   Shield,
   Trophy,
-  Star,
   AlertTriangle,
   Users,
-  ChevronRight
+  ChevronRight,
+  Navigation
 } from 'lucide-react';
-import { JerseyBadge } from '../../components/ui/JerseyBadge';
 import { CustomSelect } from '../../components/ui/Select';
 import type { ScoutingAgendaItem, Player } from '../../types/models';
+import { useSelectors } from '../../hooks/useSelectors';
+import { AgendaPickerModal } from '../../components/agenda/AgendaPickerModal';
+import { PlayerScoutingCard } from '../../components/agenda/PlayerScoutingCard';
+import { AgendaRouteMap, googleMapsRouteUrl, type RouteStop } from '../../components/agenda/AgendaRouteMap';
+import { getAgendaDateTime, isMatchSchedulable, isSameSelector, resolveAgendaMatch } from '../../utils/agenda';
+import { formatAppDate, formatAppDateLong, formatMatchDateTime } from '../../utils/dateFormatter';
+import { formatCompetition } from '../../utils/competitionFormatter';
+import type { Match } from '../../types/models';
+
+const formatDayLabel = (date: string) => {
+  return formatAppDateLong(date);
+};
 
 export const Agenda: React.FC = () => {
-  const { user } = useAuth();
-  const currentSelectorName = user?.full_name || 'Seleccionador';
+  const { selectors: selectorsList, currentSelectorName } = useSelectors();
 
   const {
     matches,
-    agenda,
-    addToAgenda,
+    agenda: rawAgenda,
     removeFromAgenda,
     markMatchAsObserved,
     getTeamObservationCount,
-    getTeamPlayersBreakdown,
-    updatePlayer
+    getTeamPlayersBreakdown
   } = useAppStore();
 
   const [activeTab, setActiveTab] = useState<'my_agenda' | 'browse'>('my_agenda');
@@ -51,7 +58,6 @@ export const Agenda: React.FC = () => {
   const [selectedMatchRosterItem, setSelectedMatchRosterItem] = useState<ScoutingAgendaItem | null>(null);
   const [rosterTab, setRosterTab] = useState<'all' | 'home' | 'away'>('all');
   const [rosterSearch, setRosterSearch] = useState('');
-  const [playerNotesEdit, setPlayerNotesEdit] = useState<Record<string, string>>({});
 
   // Modal de Confirmación de Borrado
   const [confirmDeleteItem, setConfirmDeleteItem] = useState<ScoutingAgendaItem | null>(null);
@@ -64,36 +70,22 @@ export const Agenda: React.FC = () => {
   const [standoutSelected, setStandoutSelected] = useState<string[]>([]);
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
-  // Preseleccionar / Desmarcar Jugador
-  const handleTogglePreselected = useCallback((player: Player, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    const newStatus = player.status === 'Preseleccionado' ? 'Candidato' : 'Preseleccionado';
-    updatePlayer(player.id, { status: newStatus });
-    setSuccessToast(
-      newStatus === 'Preseleccionado'
-        ? `⭐ ${player.full_name} afegit a PRESELECCIONATS!`
-        : `${player.full_name} desmarcat de preseleccionats`
-    );
-    setTimeout(() => setSuccessToast(null), 3000);
-  }, [updatePlayer]);
 
-  // Guardar nota de jugador
-  const handlePlayerNoteChange = useCallback((playerId: string, note: string) => {
-    setPlayerNotesEdit((prev) => ({ ...prev, [playerId]: note }));
-    updatePlayer(playerId, { notes: note });
-  }, [updatePlayer]);
 
-  // Lista única de seleccionadors oficials (Víctor Zandalinas i Administrador)
-  const selectorsList = useMemo(() => {
-    return ['Víctor Zandalinas', 'Administrador FFCV Castelló'];
-  }, []);
+  const [pickerMatch, setPickerMatch] = useState<Match | null>(null);
+
+  // Les entrades que venen de Supabase no porten el partit: es recupera del calendari
+  const agenda = useMemo(
+    () => rawAgenda.map((a) => (a.match ? a : { ...a, match: resolveAgendaMatch(a, matches) })),
+    [rawAgenda, matches]
+  );
 
   // Lista de categorías únicas para el explorador
   const categoriesList = useMemo(() => {
     const set = new Set<string>();
     matches.forEach((m) => {
-      const cat = m.competition_name ? `${m.competition_name} ${m.group_name ? `- ${m.group_name}` : ''}` : 'Altres';
-      set.add(cat);
+      const cat = formatCompetition(m.competition_name, m.group_name);
+      if (cat) set.add(cat);
     });
     return Array.from(set).sort();
   }, [matches]);
@@ -115,7 +107,7 @@ export const Agenda: React.FC = () => {
   const filteredAgenda = useMemo(() => {
     return agenda.filter((item) => {
       const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
-      const matchesSelector = selectorFilter === 'all' || item.selector_name === selectorFilter;
+      const matchesSelector = selectorFilter === 'all' || isSameSelector(item.selector_name, selectorFilter);
       return matchesStatus && matchesSelector;
     }).sort((a, b) => {
       const dateA = a.scheduled_date || a.created_at;
@@ -123,6 +115,51 @@ export const Agenda: React.FC = () => {
       return dateA.localeCompare(dateB);
     });
   }, [agenda, statusFilter, selectorFilter]);
+
+  // Una columna per seleccionador, amb els partits ordenats per dia i hora i agrupats per dia
+  const agendaColumns = useMemo(() => {
+    const columnSelectors =
+      selectorFilter === 'all'
+        ? selectorsList.filter(
+            (s) => isSameSelector(s, currentSelectorName) || agenda.some((a) => isSameSelector(a.selector_name, s))
+          )
+        : [selectorFilter];
+    if (!agenda.length && selectorFilter === 'all') return [];
+
+    return columnSelectors.map((selector) => {
+      const items = filteredAgenda
+        .filter((a) => isSameSelector(a.selector_name, selector))
+        .map((item) => ({ item, ...getAgendaDateTime(item, item.match) }))
+        .sort((a, b) => `${a.date} ${a.time || '99:99'}`.localeCompare(`${b.date} ${b.time || '99:99'}`));
+
+      const days: { date: string; items: { item: ScoutingAgendaItem; order: number }[]; stops: RouteStop[] }[] = [];
+      items.forEach(({ item, date, time }, index) => {
+        let day = days.find((d) => d.date === date);
+        if (!day) {
+          day = { date, items: [], stops: [] };
+          days.push(day);
+        }
+        const order = index + 1;
+        day.items.push({ item, order });
+        const m = item.match;
+        if (m?.latitude != null && m?.longitude != null) {
+          day.stops.push({
+            id: item.id,
+            order,
+            date,
+            time,
+            lat: Number(m.latitude),
+            lng: Number(m.longitude),
+            label: `${item.home_team_name} vs ${item.away_team_name}`,
+            place: m.field_name,
+            observed: item.status === 'Observat'
+          });
+        }
+      });
+
+      return { selector, items: items.map((i) => i.item), days };
+    });
+  }, [filteredAgenda, agenda, selectorsList, selectorFilter, currentSelectorName]);
 
   // Partidos del explorador filtrados
   const filteredBrowseMatches = useMemo(() => {
@@ -134,11 +171,11 @@ export const Agenda: React.FC = () => {
         (m.field_name && m.field_name.toLowerCase().includes(searchLower)) ||
         (m.city && m.city.toLowerCase().includes(searchLower));
 
-      const matchCat = m.competition_name ? `${m.competition_name} ${m.group_name ? `- ${m.group_name}` : ''}` : 'Altres';
+      const matchCat = formatCompetition(m.competition_name, m.group_name);
       const matchesCategory = categoryFilter === 'all' || matchCat === categoryFilter;
       const matchesJornada = matchdayFilter === 'all' || m.matchday === matchdayFilter;
 
-      return matchesSearch && matchesCategory && matchesJornada;
+      return isMatchSchedulable(m) && matchesSearch && matchesCategory && matchesJornada;
     }).slice(0, 100); // Límite de 100 para rendimiento fluido
   }, [matches, searchBrowse, categoryFilter, matchdayFilter]);
 
@@ -193,13 +230,223 @@ export const Agenda: React.FC = () => {
     setObservingItem(null);
   };
 
-  // Helper para saber si un partido del explorador ya está en la agenda
-  const getAgendaItemForMatch = (matchId: string) => {
-    return agenda.find((a) => a.match_id === matchId);
+  // Targeta d'un partit dins de la columna d'un seleccionador
+  const renderAgendaCard = (item: ScoutingAgendaItem, order: number) => {
+    const isObserved = item.status === 'Observat';
+    const localBreakdown = getTeamPlayersBreakdown(item.home_team_name);
+    const awayBreakdown = getTeamPlayersBreakdown(item.away_team_name);
+    const localObsCount = getTeamObservationCount(item.home_team_name);
+    const awayObsCount = getTeamObservationCount(item.away_team_name);
+    const localPreselected = localBreakdown.playersList.filter((p) => p.status === 'Preseleccionado').length;
+    const awayPreselected = awayBreakdown.playersList.filter((p) => p.status === 'Preseleccionado').length;
+
+    const { time: itemTime } = getAgendaDateTime(item, item.match);
+
+    return (
+      <div
+        key={item.id}
+        onClick={() => {
+          setSelectedMatchRosterItem(item);
+          setRosterTab('all');
+          setRosterSearch('');
+        }}
+        className={`rounded-xl p-5 border transition-all shadow-md flex flex-col justify-between cursor-pointer group hover:border-sky-500/60 hover:shadow-xl ${
+          isObserved
+            ? 'bg-slate-900/90 border-emerald-900/50 hover:border-emerald-700/60'
+            : 'bg-slate-900/90 border-slate-800 hover:border-slate-700'
+        }`}
+      >
+        <div>
+          {/* Cabecera de la Tarjeta */}
+          <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-800">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span
+                className={`w-6 h-6 rounded-full text-[11px] font-black flex items-center justify-center text-white ${
+                  isObserved ? 'bg-emerald-600' : 'bg-[#ff6600]'
+                }`}
+                title="Ordre a la ruta"
+              >
+                {order}
+              </span>
+              <span
+                className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${
+                  isObserved
+                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'
+                    : 'bg-amber-950 text-amber-300 border border-amber-800/60'
+                }`}
+              >
+                {isObserved ? (
+                  <>
+                    <CheckCircle2 className="w-3 h-3" /> Observat
+                  </>
+                ) : (
+                  <>
+                    <Clock className="w-3 h-3" /> Planificat
+                  </>
+                )}
+              </span>
+
+              <span className="text-sky-400 font-bold text-[11px] flex items-center gap-1">
+                <Trophy className="w-3 h-3 text-sky-400" />
+                <span>{formatCompetition(item.match?.competition_name, item.match?.group_name)}</span>
+              </span>
+            </div>
+
+            {/* Botón borrar de la agenda con confirmación */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirmDeleteItem(item);
+              }}
+              title="Treure de l'agenda"
+              className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-rose-500/10 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Info del Partido (Local vs Visitant) */}
+          <div className="py-4 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              {/* Local */}
+              <div className="flex-1 text-left min-w-0">
+                <h4 className="text-sm font-black text-white break-words group-hover:text-sky-300 transition-colors">
+                  {item.home_team_name}
+                </h4>
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  <span className="text-[10px] text-emerald-300 font-semibold">
+                    🟢 {localBreakdown.firstYear} (1r)
+                  </span>
+                  <span className="text-[10px] text-indigo-300 font-semibold">
+                    🔵 {localBreakdown.secondYear} (2n)
+                  </span>
+                  {localPreselected > 0 && (
+                    <span className="text-[10px] text-amber-300 font-bold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
+                      ⭐ {localPreselected}
+                    </span>
+                  )}
+                  <span className="text-[10px] text-slate-500">·</span>
+                  <span className="text-[10px] text-slate-400 font-semibold">
+                    👁️ {localObsCount}v
+                  </span>
+                </div>
+              </div>
+
+              <div className="px-2.5 py-1 bg-slate-950 rounded-lg text-xs font-black text-slate-400">
+                VS
+              </div>
+
+              {/* Visitante */}
+              <div className="flex-1 text-right min-w-0">
+                <h4 className="text-sm font-black text-white break-words group-hover:text-sky-300 transition-colors">
+                  {item.away_team_name}
+                </h4>
+                <div className="flex flex-wrap items-center justify-end gap-2 mt-1">
+                  <span className="text-[10px] text-emerald-300 font-semibold">
+                    🟢 {awayBreakdown.firstYear} (1r)
+                  </span>
+                  <span className="text-[10px] text-indigo-300 font-semibold">
+                    🔵 {awayBreakdown.secondYear} (2n)
+                  </span>
+                  {awayPreselected > 0 && (
+                    <span className="text-[10px] text-amber-300 font-bold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
+                      ⭐ {awayPreselected}
+                    </span>
+                  )}
+                  <span className="text-[10px] text-slate-500">·</span>
+                  <span className="text-[10px] text-slate-400 font-semibold">
+                    👁️ {awayObsCount}v
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Fecha, Hora y Campo */}
+            <div className="bg-slate-950/60 rounded-lg p-2.5 text-xs text-slate-300 space-y-1">
+              <div className="flex items-center justify-between gap-1.5 font-bold text-sky-200">
+                <div className="flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-sky-400" />
+                  <span>{itemTime ? `${itemTime}h` : 'Hora per confirmar'}</span>
+                </div>
+                <span className="text-[10px] font-bold text-sky-400 group-hover:underline flex items-center gap-0.5">
+                  Veure Plantilles i Informes <ChevronRight className="w-3 h-3" />
+                </span>
+              </div>
+
+              {item.match?.field_name && (
+                <div className="flex items-start gap-1.5 text-[11px] text-slate-400">
+                  <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
+                  <span className="line-clamp-2 break-words">
+                    {item.match.field_name}
+                    {item.match.city ? ` (${item.match.city})` : ''}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Notas de la observación (si está observado) */}
+            {isObserved && item.notes && (
+              <div className="bg-emerald-950/30 border border-emerald-900/40 rounded-lg p-2.5 text-xs text-emerald-200">
+                <span className="font-bold flex items-center gap-1 text-[11px] text-emerald-300 mb-0.5">
+                  <FileText className="w-3 h-3" /> Notes de l'observació:
+                </span>
+                <p className="text-[11px] text-slate-300 italic">{item.notes}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Botón de Acción Principal */}
+        <div className="pt-3 border-t border-slate-800">
+          {!isObserved ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenObserveModal(item);
+              }}
+              className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-colors flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/30"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Marcar com Observat (Vist)</span>
+            </button>
+          ) : (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+                <Check className="w-3.5 h-3.5" /> Observació completada el{' '}
+                {item.observed_at ? formatAppDate(item.observed_at) : 'recentment'}
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenObserveModal(item);
+                }}
+                className="text-xs text-sky-400 hover:underline font-bold"
+              >
+                Editar Notes
+              </button>
+            </div>
+          )}
+          {isObserved && (
+            <p className="mt-2 text-[10.5px] font-semibold text-slate-400 flex items-center gap-1">
+              <Users className="w-3 h-3 shrink-0" />
+              {item.lineup_processed_at
+                ? `${item.played_player_ids?.length ?? 0} jugadors que van jugar marcats com a observats (segons l'acta)`
+                : "Els jugadors que juguen es marcaran com a observats 2 dies després del partit, segons l'acta"}
+            </p>
+          )}
+        </div>
+      </div>
+    );
   };
+
 
   return (
     <div className="space-y-6 animate-fade-in pb-12">
+      <AgendaPickerModal match={pickerMatch} onClose={() => setPickerMatch(null)} />
+
       {/* Toast de Éxito */}
       {successToast && (
         <div className="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2.5 animate-bounce">
@@ -299,7 +546,7 @@ export const Agenda: React.FC = () => {
             }`}
           >
             <CalendarCheck className="w-4 h-4" />
-            <span>La meua Agenda ({agenda.length})</span>
+            <span>Agendes ({agenda.length})</span>
           </button>
 
           <button
@@ -331,7 +578,7 @@ export const Agenda: React.FC = () => {
             {/* Filtro Seleccionador */}
             {selectorsList.length > 1 && (
               <CustomSelect
-                value={selectorFilter}
+                value={selectorsList.find((s) => isSameSelector(s, selectorFilter)) || 'all'}
                 onChange={setSelectorFilter}
                 options={[
                   { value: 'all', label: 'Tots els tècnics' },
@@ -346,12 +593,12 @@ export const Agenda: React.FC = () => {
       {/* ── CONTENIDO PESTAÑA 1: LA MEUA AGENDA ──────────────────────────────── */}
       {activeTab === 'my_agenda' && (
         <div className="space-y-4">
-          {filteredAgenda.length === 0 ? (
+          {agendaColumns.length === 0 ? (
             <div className="text-center py-16 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
               <CalendarCheck className="w-12 h-12 text-slate-400 mx-auto mb-3" />
               <h3 className="text-base font-bold text-[#061338]">No hi ha partits a l'agenda</h3>
               <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-5">
-                Encara no has afegit cap partit a la teua planificació d'observació territorial.
+                Encara no hi ha cap partit a la planificació d'observació territorial.
               </p>
               <button
                 onClick={() => setActiveTab('browse')}
@@ -362,206 +609,81 @@ export const Agenda: React.FC = () => {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredAgenda.map((item) => {
-                const isObserved = item.status === 'Observat';
-                const localBreakdown = getTeamPlayersBreakdown(item.home_team_name);
-                const awayBreakdown = getTeamPlayersBreakdown(item.away_team_name);
-                const localObsCount = getTeamObservationCount(item.home_team_name);
-                const awayObsCount = getTeamObservationCount(item.away_team_name);
-                const localPreselected = localBreakdown.playersList.filter((p) => p.status === 'Preseleccionado').length;
-                const awayPreselected = awayBreakdown.playersList.filter((p) => p.status === 'Preseleccionado').length;
-
-                return (
-                  <div
-                    key={item.id}
-                    onClick={() => {
-                      setSelectedMatchRosterItem(item);
-                      setRosterTab('all');
-                      setRosterSearch('');
-                    }}
-                    className={`rounded-xl p-5 border transition-all shadow-md flex flex-col justify-between cursor-pointer group hover:border-sky-500/60 hover:shadow-xl ${
-                      isObserved
-                        ? 'bg-slate-900/90 border-emerald-900/50 hover:border-emerald-700/60'
-                        : 'bg-slate-900/90 border-slate-800 hover:border-slate-700'
-                    }`}
-                  >
-                    <div>
-                      {/* Cabecera de la Tarjeta */}
-                      <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-800">
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
-                          <span
-                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${
-                              isObserved
-                                ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'
-                                : 'bg-amber-950 text-amber-300 border border-amber-800/60'
-                            }`}
+            <div className="overflow-x-auto custom-scrollbar pb-2">
+              <div
+                className="grid gap-4 items-start"
+                style={{ gridTemplateColumns: `repeat(${agendaColumns.length}, minmax(340px, 1fr))` }}
+              >
+                {agendaColumns.map((column) => {
+                  const routeStops = column.days.flatMap((d) => d.stops);
+                  return (
+                    <section key={column.selector} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-4 min-w-0">
+                      {/* Capçalera del seleccionador */}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-full bg-[#002568] text-white font-black flex items-center justify-center text-xs shrink-0">
+                            {column.selector.substring(0, 2).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <h3 className="text-sm font-black text-[#061338] uppercase truncate">
+                              {column.selector}
+                              {isSameSelector(column.selector, currentSelectorName) && (
+                                <span className="ml-1.5 text-[10px] font-bold text-slate-400 normal-case">(tu)</span>
+                              )}
+                            </h3>
+                            <p className="text-[11px] font-semibold text-slate-500">
+                              {column.items.length} {column.items.length === 1 ? 'partit' : 'partits'} ·{' '}
+                              {column.items.filter((i) => i.status === 'Observat').length} observats
+                            </p>
+                          </div>
+                        </div>
+                        {routeStops.length > 0 && (
+                          <a
+                            href={googleMapsRouteUrl(routeStops)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#061338] hover:bg-[#002568] text-white text-[11px] font-black transition-colors"
+                            title="Obrir la ruta completa a Google Maps"
                           >
-                            {isObserved ? (
-                              <>
-                                <CheckCircle2 className="w-3 h-3" /> Observat
-                              </>
-                            ) : (
-                              <>
-                                <Clock className="w-3 h-3" /> Planificat
-                              </>
-                            )}
-                          </span>
-
-                          <span className="text-sky-400 font-bold text-[11px] flex items-center gap-1">
-                            <Trophy className="w-3 h-3 text-sky-400" />
-                            <span>{item.match?.competition_name || 'Lliga FFCV'}{item.match?.group_name ? ` · ${item.match.group_name}` : ''}</span>
-                          </span>
-
-                          <span className="text-slate-400 text-[11px]">
-                            ({item.selector_name})
-                          </span>
-                        </div>
-
-                        {/* Botón borrar de la agenda con confirmación */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setConfirmDeleteItem(item);
-                          }}
-                          title="Treure de l'agenda"
-                          className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-rose-500/10 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      {/* Info del Partido (Local vs Visitant) */}
-                      <div className="py-4 space-y-3">
-                        <div className="flex items-center justify-between gap-3">
-                          {/* Local */}
-                          <div className="flex-1 text-left min-w-0">
-                            <h4 className="text-sm font-black text-white break-words group-hover:text-sky-300 transition-colors">
-                              {item.home_team_name}
-                            </h4>
-                            <div className="flex flex-wrap items-center gap-2 mt-1">
-                              <span className="text-[10px] text-emerald-300 font-semibold">
-                                🟢 {localBreakdown.firstYear} (1r)
-                              </span>
-                              <span className="text-[10px] text-indigo-300 font-semibold">
-                                🔵 {localBreakdown.secondYear} (2n)
-                              </span>
-                              {localPreselected > 0 && (
-                                <span className="text-[10px] text-amber-300 font-bold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
-                                  ⭐ {localPreselected}
-                                </span>
-                              )}
-                              <span className="text-[10px] text-slate-500">·</span>
-                              <span className="text-[10px] text-slate-400 font-semibold">
-                                👁️ {localObsCount}v
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="px-2.5 py-1 bg-slate-950 rounded-lg text-xs font-black text-slate-400">
-                            VS
-                          </div>
-
-                          {/* Visitante */}
-                          <div className="flex-1 text-right min-w-0">
-                            <h4 className="text-sm font-black text-white break-words group-hover:text-sky-300 transition-colors">
-                              {item.away_team_name}
-                            </h4>
-                            <div className="flex flex-wrap items-center justify-end gap-2 mt-1">
-                              <span className="text-[10px] text-emerald-300 font-semibold">
-                                🟢 {awayBreakdown.firstYear} (1r)
-                              </span>
-                              <span className="text-[10px] text-indigo-300 font-semibold">
-                                🔵 {awayBreakdown.secondYear} (2n)
-                              </span>
-                              {awayPreselected > 0 && (
-                                <span className="text-[10px] text-amber-300 font-bold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
-                                  ⭐ {awayPreselected}
-                                </span>
-                              )}
-                              <span className="text-[10px] text-slate-500">·</span>
-                              <span className="text-[10px] text-slate-400 font-semibold">
-                                👁️ {awayObsCount}v
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Fecha, Hora y Campo */}
-                        <div className="bg-slate-950/60 rounded-lg p-2.5 text-xs text-slate-300 space-y-1">
-                          <div className="flex items-center justify-between gap-1.5 font-bold text-sky-200">
-                            <div className="flex items-center gap-1.5">
-                              <Clock className="w-3.5 h-3.5 text-sky-400" />
-                              <span>
-                                {item.scheduled_date ? item.scheduled_date.slice(0, 10) : 'Data per definir'}
-                                {item.match?.time ? ` · ${item.match.time}h` : ''}
-                              </span>
-                            </div>
-                            <span className="text-[10px] font-bold text-sky-400 group-hover:underline flex items-center gap-0.5">
-                              Veure Plantilles i Informes <ChevronRight className="w-3 h-3" />
-                            </span>
-                          </div>
-
-                          {item.match?.field_name && (
-                            <div className="flex items-start gap-1.5 text-[11px] text-slate-400">
-                              <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
-                              <span className="line-clamp-2 break-words">
-                                {item.match.field_name}
-                                {item.match.city ? ` (${item.match.city})` : ''}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Notas de la observación (si está observado) */}
-                        {isObserved && item.notes && (
-                          <div className="bg-emerald-950/30 border border-emerald-900/40 rounded-lg p-2.5 text-xs text-emerald-200">
-                            <span className="font-bold flex items-center gap-1 text-[11px] text-emerald-300 mb-0.5">
-                              <FileText className="w-3 h-3" /> Notes de l'observació:
-                            </span>
-                            <p className="text-[11px] text-slate-300 italic">{item.notes}</p>
-                          </div>
+                            <Navigation className="w-3.5 h-3.5" /> Ruta
+                          </a>
                         )}
                       </div>
-                    </div>
 
-                    {/* Botón de Acción Principal */}
-                    <div className="pt-3 border-t border-slate-800">
-                      {!isObserved ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenObserveModal(item);
-                          }}
-                          className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-colors flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/30"
-                        >
-                          <CheckCircle2 className="w-4 h-4" />
-                          <span>Marcar com Observat (Vist)</span>
-                        </button>
-                      ) : (
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
-                            <Check className="w-3.5 h-3.5" /> Observació completada el{' '}
-                            {item.observed_at ? item.observed_at.slice(0, 10) : 'recentment'}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenObserveModal(item);
-                            }}
-                            className="text-xs text-sky-400 hover:underline font-bold"
-                          >
-                            Editar Notes
-                          </button>
-                        </div>
+                      {/* Mapa de la ruta */}
+                      <AgendaRouteMap stops={routeStops} />
+
+                      {column.items.length === 0 && (
+                        <p className="text-xs text-slate-400 font-semibold text-center py-6">
+                          Encara no hi ha partits en aquesta agenda.
+                        </p>
                       )}
-                    </div>
-                  </div>
-                );
-              })}
+
+                      {/* Partits agrupats per dia, ordenats per hora */}
+                      {column.days.map((day) => (
+                        <div key={day.date || 'sense-data'} className="space-y-3">
+                          <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
+                            <h4 className="text-xs font-black uppercase tracking-wider text-[#002568] pt-3">
+                              {formatDayLabel(day.date)}
+                            </h4>
+                            {day.stops.length > 1 && (
+                              <a
+                                href={googleMapsRouteUrl(day.stops)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="pt-3 text-[11px] font-black text-[#ff6600] hover:underline inline-flex items-center gap-1"
+                              >
+                                <Navigation className="w-3 h-3" /> Ruta del dia
+                              </a>
+                            )}
+                          </div>
+                          {day.items.map(({ item, order }) => renderAgendaCard(item, order))}
+                        </div>
+                      ))}
+                    </section>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
@@ -613,9 +735,9 @@ export const Agenda: React.FC = () => {
           {/* Listado de Partidos */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
             {filteredBrowseMatches.map((match) => {
-              const agendaItem = getAgendaItemForMatch(match.id);
-              const isAdded = Boolean(agendaItem);
-              const isObserved = agendaItem?.status === 'Observat';
+              const matchAgendaItems = agenda.filter((a) => a.match_id === match.id);
+              const isAdded = matchAgendaItems.length > 0;
+              const isObserved = matchAgendaItems.some((a) => a.status === 'Observat');
 
               const localBreakdown = getTeamPlayersBreakdown(match.home_team_name || '');
               const awayBreakdown = getTeamPlayersBreakdown(match.away_team_name || '');
@@ -632,11 +754,11 @@ export const Agenda: React.FC = () => {
                     <div className="flex items-center justify-between text-[11px] text-slate-400 pb-2 border-b border-slate-800">
                       <span className="font-bold text-sky-300 flex items-center gap-1.5">
                         <Trophy className="w-3.5 h-3.5 text-sky-400" />
-                        <span>{match.competition_name || 'Lliga FFCV'}{match.group_name ? ` · ${match.group_name}` : ''} {match.matchday ? `· ${match.matchday}` : ''}</span>
+                        <span>{formatCompetition(match.competition_name, match.group_name)} {match.matchday ? `· ${match.matchday}` : ''}</span>
                       </span>
-                      <span className="flex items-center gap-1 text-slate-400">
-                        <Clock className="w-3 h-3 text-slate-500" />
-                        <span>{match.match_date ? match.match_date.slice(0, 10) : ''}{match.time ? ` · ${match.time}` : ''}</span>
+                      <span className="flex items-center gap-1 text-slate-300 font-semibold">
+                        <Clock className="w-3 h-3 text-sky-400" />
+                        <span>{formatMatchDateTime(match)}</span>
                       </span>
                     </div>
 
@@ -676,35 +798,28 @@ export const Agenda: React.FC = () => {
 
                   {/* Botón de Añadir / Estado */}
                   <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-2">
-                    {isObserved ? (
-                      <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Observat
-                      </span>
-                    ) : isAdded ? (
-                      <div className="flex items-center justify-between w-full">
-                        <span className="text-xs font-bold text-sky-400 flex items-center gap-1">
-                          <Check className="w-3.5 h-3.5" /> A la teua agenda
+                    {isAdded ? (
+                      <div className="flex items-center justify-between w-full gap-2">
+                        <span className={`text-xs font-bold flex items-center gap-1 min-w-0 ${isObserved ? 'text-emerald-400' : 'text-sky-400'}`}>
+                          {isObserved ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> : <Check className="w-3.5 h-3.5 shrink-0" />}
+                          <span className="truncate">{matchAgendaItems.map((a) => a.selector_name).join(', ')}</span>
                         </span>
                         <button
                           type="button"
-                          onClick={() => setConfirmDeleteItem(agendaItem!)}
-                          className="text-[11px] text-rose-400 hover:underline font-bold"
+                          onClick={() => setPickerMatch(match)}
+                          className="text-[11px] text-sky-300 hover:underline font-bold shrink-0"
                         >
-                          Treure
+                          Canviar
                         </button>
                       </div>
                     ) : (
                       <button
                         type="button"
-                        onClick={() => {
-                          addToAgenda(match, currentSelectorName);
-                          setSuccessToast(`Afegit a l'agenda: ${match.home_team_name} vs ${match.away_team_name}`);
-                          setTimeout(() => setSuccessToast(null), 3000);
-                        }}
+                        onClick={() => setPickerMatch(match)}
                         className="w-full py-2 bg-slate-800 hover:bg-[#ff6600] text-slate-200 hover:text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>Afegir a la meua agenda</span>
+                        <span>Afegir a l'agenda</span>
                       </button>
                     )}
                   </div>
@@ -754,7 +869,7 @@ export const Agenda: React.FC = () => {
                   <div className="flex items-center gap-2 mb-1">
                     <span className="bg-sky-500/15 text-sky-300 border border-sky-500/30 px-2.5 py-0.5 rounded-lg text-xs font-black uppercase flex items-center gap-1.5">
                       <Trophy className="w-3.5 h-3.5 text-sky-400" />
-                      <span>{selectedMatchRosterItem.match?.competition_name || 'Lliga FFCV'}{selectedMatchRosterItem.match?.group_name ? ` · ${selectedMatchRosterItem.match.group_name}` : ''}</span>
+                      <span>{formatCompetition(selectedMatchRosterItem.match?.competition_name, selectedMatchRosterItem.match?.group_name)}</span>
                     </span>
                     <span className="text-xs font-bold text-slate-400">
                       {selectedMatchRosterItem.match?.matchday || 'Partit FFCV'}
@@ -767,9 +882,8 @@ export const Agenda: React.FC = () => {
                     <span>{selectedMatchRosterItem.away_team_name}</span>
                   </h2>
 
-                  <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 font-semibold">
-                    <span>📅 {selectedMatchRosterItem.scheduled_date ? selectedMatchRosterItem.scheduled_date.slice(0, 10) : 'Data per definir'}</span>
-                    <span>🕒 {selectedMatchRosterItem.match?.time ? `${selectedMatchRosterItem.match.time} h` : ''}</span>
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300 mt-1 font-semibold">
+                    <span>📅 {formatAppDateLong(selectedMatchRosterItem.scheduled_date, selectedMatchRosterItem.match?.time)}</span>
                     <span>📍 {selectedMatchRosterItem.match?.field_name || 'Camp FFCV'}</span>
                   </div>
                 </div>
@@ -879,115 +993,7 @@ export const Agenda: React.FC = () => {
                     <p className="font-bold">No s'han trobat jugadors per a aquesta selecció.</p>
                   </div>
                 ) : (
-                  activePlayers.map((player) => {
-                    const isPreselected = player.status === 'Preseleccionado';
-                    const playerNote =
-                      playerNotesEdit[player.id] !== undefined
-                        ? playerNotesEdit[player.id]
-                        : player.notes || '';
-
-                    return (
-                      <div
-                        key={player.id}
-                        className={`p-3.5 sm:p-4 rounded-2xl border transition-all ${
-                          isPreselected
-                            ? 'bg-amber-950/20 border-amber-500/40 shadow-lg shadow-amber-950/20'
-                            : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
-                        }`}
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          {/* Izquierda: Dorsal, Foto, Nombre, Equipo y Año */}
-                          <div className="flex items-center gap-3 min-w-0">
-                            {/* Dorsal Badge */}
-                            <JerseyBadge
-                              number={player.jersey_number}
-                              size="sm"
-                              variant="kit"
-                              color={player.infantil_year === 'Infantil 1er año' ? 'orange' : 'blue'}
-                              className="shrink-0"
-                            />
-
-                            {/* Foto / Avatar */}
-                            <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-xs text-slate-300 shrink-0 overflow-hidden shadow">
-                              {player.photo_url ? (
-                                <img src={player.photo_url} alt="" className="w-full h-full object-cover" />
-                              ) : (
-                                <span>{player.first_name?.[0] || 'J'}{player.last_name?.[0] || ''}</span>
-                              )}
-                            </div>
-
-                            {/* Nombre, Equipo y Posición */}
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <h4 className="text-xs sm:text-sm font-black text-white break-words">
-                                  {player.full_name}
-                                </h4>
-                                {isPreselected && (
-                                  <span className="px-2 py-0.2 rounded-full text-[9px] font-black bg-amber-500 text-slate-950 uppercase tracking-wider flex items-center gap-0.5 shadow">
-                                    <Star className="w-2.5 h-2.5 fill-current" /> Preseleccionat
-                                  </span>
-                                )}
-                              </div>
-
-                              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 mt-0.5">
-                                <span className="text-slate-300 font-bold">{player.team?.name || 'Sense equip'}</span>
-                                <span>·</span>
-                                <span className="text-sky-300 font-semibold">{player.position || 'Jugador'}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Derecha: Badge Año + Botón de Preselección */}
-                          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                            {/* Badge de Año Infantil */}
-                            <span
-                              className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border whitespace-nowrap ${
-                                player.infantil_year === 'Infantil 1er año'
-                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                                  : player.infantil_year === 'Infantil 2º año'
-                                  ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
-                                  : 'bg-slate-800 text-slate-400 border-slate-700'
-                              }`}
-                            >
-                              {player.infantil_year === 'Infantil 1er año'
-                                ? '🟢 1r Any (2014)'
-                                : player.infantil_year === 'Infantil 2º año'
-                                ? '🔵 2n Any (2013)'
-                                : 'Infantil'}
-                            </span>
-
-                            {/* Botón de Preselección con Estrella */}
-                            <button
-                              type="button"
-                              onClick={(e) => handleTogglePreselected(player, e)}
-                              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-sm ${
-                                isPreselected
-                                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 hover:from-rose-600 hover:to-rose-700 hover:text-white shadow-amber-500/30'
-                                  : 'bg-slate-950 hover:bg-amber-500/20 text-slate-300 hover:text-amber-300 border border-slate-800 hover:border-amber-500/40'
-                              }`}
-                            >
-                              <Star className={`w-3.5 h-3.5 ${isPreselected ? 'fill-current' : ''}`} />
-                              <span>{isPreselected ? 'Preseleccionat' : 'Preseleccionar'}</span>
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Campo de Comentario / Informe de Scouting por Jugador */}
-                        <div className="mt-2.5 pt-2.5 border-t border-slate-800/80">
-                          <div className="flex items-start gap-2">
-                            <FileText className="w-3.5 h-3.5 text-slate-500 mt-1 shrink-0" />
-                            <input
-                              type="text"
-                              value={playerNote}
-                              onChange={(e) => handlePlayerNoteChange(player.id, e.target.value)}
-                              placeholder="Afig un breu comentari / informe tècnic sobre el jugador (desat automàtic)..."
-                              className="w-full bg-slate-950/90 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-sky-500 transition-colors"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
+                  activePlayers.map((player) => <PlayerScoutingCard key={player.id} player={player} />)
                 )}
               </div>
 
@@ -1034,7 +1040,7 @@ export const Agenda: React.FC = () => {
                 {confirmDeleteItem.home_team_name} <span className="text-slate-500">vs</span> {confirmDeleteItem.away_team_name}
               </p>
               <p className="text-[11px] text-slate-400">
-                📅 {confirmDeleteItem.scheduled_date ? confirmDeleteItem.scheduled_date.slice(0, 10) : ''} · Tècnic: {confirmDeleteItem.selector_name}
+                📅 {confirmDeleteItem.scheduled_date ? formatAppDate(confirmDeleteItem.scheduled_date) : ''} · Tècnic: {confirmDeleteItem.selector_name}
               </p>
             </div>
 
@@ -1103,7 +1109,7 @@ export const Agenda: React.FC = () => {
                   {observingItem.away_team_name}
                 </p>
                 <p className="text-[11px] text-slate-400 mt-1">
-                  {observingItem.scheduled_date ? observingItem.scheduled_date.slice(0, 10) : ''} ·{' '}
+                  {observingItem.scheduled_date ? formatAppDate(observingItem.scheduled_date, observingItem.match?.time) : ''} ·{' '}
                   {observingItem.match?.field_name || 'Camp FFCV'}
                 </p>
               </div>

@@ -7,6 +7,7 @@ import { CustomSelect } from '../../components/ui/Select';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAppStore } from '../../hooks/useAppStore';
 import { useToast } from '../../contexts/ToastContext';
+import { formatAppDate } from '../../utils/dateFormatter';
 
 export const Reports: React.FC = () => {
   const { t } = useLanguage();
@@ -74,7 +75,7 @@ export const Reports: React.FC = () => {
           <Card key={report.id} className="p-6 space-y-4" gradient>
             <div className="flex items-start justify-between">
               <div>
-                <span className="text-xs text-slate-400 font-semibold">{report.report_date}</span>
+                <span className="text-xs text-slate-400 font-semibold">{formatAppDate(report.report_date)}</span>
                 <h3 className="text-lg font-black text-white mt-1">{report.player?.full_name}</h3>
                 <p className="text-xs text-emerald-400 font-semibold">
                   {report.player?.position} • {report.player?.team?.name}

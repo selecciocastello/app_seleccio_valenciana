@@ -7,7 +7,8 @@ import {
   ArrowDown,
   RotateCcw,
   ChevronRight,
-  Shield
+  Shield,
+  Star
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import clsx from 'clsx';
@@ -22,7 +23,7 @@ import { CustomSelect } from '../../components/ui/Select';
 import { PLAYER_POSITIONS, type Player, type PlayerStatus } from '../../types/models';
 import { PlayerPhoto } from '../../components/ui/PlayerPhoto';
 
-type SortField = 'name' | 'matches' | 'goals';
+type SortField = 'name' | 'matches' | 'goals' | 'rating';
 type SortOrder = 'asc' | 'desc';
 
 const PLAYERS_FILTERS_KEY = 'players_filters_state_v1';
@@ -35,6 +36,7 @@ interface PlayersFilterState {
   selectedInfantilYear: string;
   selectedMatchesFilter: string;
   selectedGoalsFilter: string;
+  selectedRatingFilter: string;
   sortBy: SortField;
   sortOrder: SortOrder;
 }
@@ -47,6 +49,7 @@ const defaultFilterState: PlayersFilterState = {
   selectedInfantilYear: 'all',
   selectedMatchesFilter: 'all',
   selectedGoalsFilter: 'all',
+  selectedRatingFilter: 'all',
   sortBy: 'name',
   sortOrder: 'asc',
 };
@@ -64,7 +67,8 @@ const getSavedFilters = (): PlayersFilterState => {
         selectedInfantilYear: typeof parsed.selectedInfantilYear === 'string' ? parsed.selectedInfantilYear : defaultFilterState.selectedInfantilYear,
         selectedMatchesFilter: typeof parsed.selectedMatchesFilter === 'string' ? parsed.selectedMatchesFilter : defaultFilterState.selectedMatchesFilter,
         selectedGoalsFilter: typeof parsed.selectedGoalsFilter === 'string' ? parsed.selectedGoalsFilter : defaultFilterState.selectedGoalsFilter,
-        sortBy: (parsed.sortBy === 'name' || parsed.sortBy === 'matches' || parsed.sortBy === 'goals') ? parsed.sortBy : defaultFilterState.sortBy,
+        selectedRatingFilter: typeof parsed.selectedRatingFilter === 'string' ? parsed.selectedRatingFilter : defaultFilterState.selectedRatingFilter,
+        sortBy: (parsed.sortBy === 'name' || parsed.sortBy === 'matches' || parsed.sortBy === 'goals' || parsed.sortBy === 'rating') ? parsed.sortBy : defaultFilterState.sortBy,
         sortOrder: (parsed.sortOrder === 'asc' || parsed.sortOrder === 'desc') ? parsed.sortOrder : defaultFilterState.sortOrder,
       };
     }
@@ -88,6 +92,7 @@ export const Players: React.FC = () => {
   const [selectedInfantilYear, setSelectedInfantilYear] = useState<string>(savedFilters.selectedInfantilYear);
   const [selectedMatchesFilter, setSelectedMatchesFilter] = useState<string>(savedFilters.selectedMatchesFilter);
   const [selectedGoalsFilter, setSelectedGoalsFilter] = useState<string>(savedFilters.selectedGoalsFilter);
+  const [selectedRatingFilter, setSelectedRatingFilter] = useState<string>(savedFilters.selectedRatingFilter);
   const [sortBy, setSortBy] = useState<SortField>(savedFilters.sortBy);
   const [sortOrder, setSortOrder] = useState<SortOrder>(savedFilters.sortOrder);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -103,6 +108,7 @@ export const Players: React.FC = () => {
         selectedInfantilYear,
         selectedMatchesFilter,
         selectedGoalsFilter,
+        selectedRatingFilter,
         sortBy,
         sortOrder,
       };
@@ -118,6 +124,7 @@ export const Players: React.FC = () => {
     selectedInfantilYear,
     selectedMatchesFilter,
     selectedGoalsFilter,
+    selectedRatingFilter,
     sortBy,
     sortOrder,
   ]);
@@ -163,6 +170,7 @@ export const Players: React.FC = () => {
     selectedInfantilYear !== 'all' ||
     selectedMatchesFilter !== 'all' ||
     selectedGoalsFilter !== 'all' ||
+    selectedRatingFilter !== 'all' ||
     sortBy !== 'name' ||
     sortOrder !== 'asc';
 
@@ -174,6 +182,7 @@ export const Players: React.FC = () => {
     setSelectedInfantilYear('all');
     setSelectedMatchesFilter('all');
     setSelectedGoalsFilter('all');
+    setSelectedRatingFilter('all');
     setSortBy('name');
     setSortOrder('asc');
     try {
@@ -201,6 +210,18 @@ export const Players: React.FC = () => {
     const finalPos = newPosition === 'Sense definir' ? '' : newPosition;
     updatePlayer(playerId, { position: finalPos });
     showToast(`Posició de ${playerName} actualitzada a "${newPosition}"`, 'success');
+  };
+
+  // Clicar l'estrella actual esborra la valoració
+  const handleRatingChange = (player: Player, n: number) => {
+    const newRating = player.rating === n ? 0 : n;
+    updatePlayer(player.id, { rating: newRating });
+    showToast(
+      newRating > 0
+        ? `Valoració de ${player.full_name}: ${newRating} ${newRating === 1 ? 'estrella' : 'estrelles'}`
+        : `Valoració de ${player.full_name} esborrada`,
+      'success'
+    );
   };
 
   const filteredPlayers = useMemo(() => {
@@ -249,6 +270,11 @@ export const Players: React.FC = () => {
       else if (selectedGoalsFilter === 'min_5') goalsFilterPass = stats.goals >= 5;
       else if (selectedGoalsFilter === 'no_goals') goalsFilterPass = stats.goals === 0;
 
+      const rating = p.rating ?? 0;
+      let ratingFilterPass = true;
+      if (selectedRatingFilter === 'unrated') ratingFilterPass = rating === 0;
+      else if (selectedRatingFilter !== 'all') ratingFilterPass = rating >= Number(selectedRatingFilter);
+
       return (
         matchesSearch &&
         matchesStatus &&
@@ -256,7 +282,8 @@ export const Players: React.FC = () => {
         matchesPosition &&
         matchesInfantilYear &&
         matchesFilterPass &&
-        goalsFilterPass
+        goalsFilterPass &&
+        ratingFilterPass
       );
     });
 
@@ -264,6 +291,11 @@ export const Players: React.FC = () => {
       if (sortBy === 'matches') {
         const aVal = getPlayerStats(a).matches;
         const bVal = getPlayerStats(b).matches;
+        return sortOrder === 'desc' ? bVal - aVal : aVal - bVal;
+      }
+      if (sortBy === 'rating') {
+        const aVal = a.rating ?? 0;
+        const bVal = b.rating ?? 0;
         return sortOrder === 'desc' ? bVal - aVal : aVal - bVal;
       }
       if (sortBy === 'goals') {
@@ -286,6 +318,7 @@ export const Players: React.FC = () => {
     selectedInfantilYear,
     selectedMatchesFilter,
     selectedGoalsFilter,
+    selectedRatingFilter,
     sortBy,
     sortOrder,
   ]);
@@ -344,7 +377,7 @@ export const Players: React.FC = () => {
 
       {/* Buscador y Filtros */}
       <Card className="p-4 sm:p-5 bg-white space-y-4 shadow-sm border border-slate-200/80 rounded-2xl">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {/* Buscador */}
           <div className="relative sm:col-span-2 md:col-span-3 lg:col-span-4 xl:col-span-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -388,6 +421,7 @@ export const Players: React.FC = () => {
               { value: 'all', label: 'Tots els Estats' },
               { value: 'Candidato', label: 'Candidat' },
               { value: 'Observado', label: 'Observat' },
+              { value: 'Interesante', label: 'Interessant' },
               { value: 'Preseleccionado', label: 'Preseleccionat' },
               { value: 'Seleccionado', label: 'Seleccionat' },
               { value: 'Lesionado', label: 'Lesionat' },
@@ -429,6 +463,21 @@ export const Players: React.FC = () => {
               { value: 'min_3', label: 'Golejadors (≥ 3 gols)' },
               { value: 'min_5', label: 'Top golejadors (≥ 5 gols)' },
               { value: 'no_goals', label: 'Sense gols (0)' },
+            ]}
+          />
+
+          {/* Filtro Valoració */}
+          <CustomSelect
+            value={selectedRatingFilter}
+            onChange={setSelectedRatingFilter}
+            options={[
+              { value: 'all', label: 'Valoració: Totes' },
+              { value: '5', label: '★★★★★ (5)' },
+              { value: '4', label: '★★★★ o més (≥ 4)' },
+              { value: '3', label: '★★★ o més (≥ 3)' },
+              { value: '2', label: '★★ o més (≥ 2)' },
+              { value: '1', label: '★ o més (≥ 1)' },
+              { value: 'unrated', label: 'Sense valorar' },
             ]}
           />
         </div>
@@ -503,7 +552,7 @@ export const Players: React.FC = () => {
                           <img
                             src={player.team.crest_url}
                             alt={player.team.name}
-                            className="w-4 h-4 object-contain shrink-0"
+                            className="w-5 h-5 object-contain shrink-0 bg-white rounded p-0.5 border border-slate-200 shadow-sm"
                             onError={(e) => {
                               (e.currentTarget as HTMLImageElement).style.display = 'none';
                             }}
@@ -647,6 +696,20 @@ export const Players: React.FC = () => {
                   <th className="py-3.5 px-3 text-center whitespace-nowrap">Edat</th>
                   <th className="py-3.5 px-3 text-center whitespace-nowrap">Estat</th>
                   <th
+                    onClick={() => handleSort('rating')}
+                    className="py-3.5 px-3 text-center cursor-pointer select-none hover:bg-[#002568] transition-colors whitespace-nowrap"
+                    title="Ordenar per valoració"
+                  >
+                    <div className="inline-flex items-center gap-1.5 justify-center">
+                      <span>Valoració</span>
+                      {sortBy === 'rating' ? (
+                        sortOrder === 'desc' ? <ArrowDown className="w-3.5 h-3.5 text-[#ff6600]" /> : <ArrowUp className="w-3.5 h-3.5 text-[#ff6600]" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60" />
+                      )}
+                    </div>
+                  </th>
+                  <th
                     onClick={() => handleSort('matches')}
                     className="py-3.5 px-3 text-center cursor-pointer select-none hover:bg-[#002568] transition-colors whitespace-nowrap"
                     title="Ordenar per partits jugats"
@@ -706,11 +769,6 @@ export const Players: React.FC = () => {
                               {player.full_name}
                             </span>
                             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                              {(player.rating ?? 0) > 0 && (
-                                <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-black" title={`Valoració: ${player.rating}/5 estrelles`}>
-                                  ⭐ {player.rating}/5
-                                </span>
-                              )}
                               {player.notes && (
                                 <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-bold" title={player.notes}>
                                   📝 Nota
@@ -770,7 +828,7 @@ export const Players: React.FC = () => {
                             <img
                               src={player.team.crest_url}
                               alt={player.team.name}
-                              className="w-5 h-5 object-contain shrink-0"
+                              className="w-6 h-6 object-contain shrink-0 bg-white rounded p-0.5 border border-slate-200 shadow-sm"
                               onError={(e) => {
                                 (e.currentTarget as HTMLImageElement).style.display = 'none';
                               }}
@@ -795,6 +853,27 @@ export const Players: React.FC = () => {
                       </td>
                       <td className="py-3 px-3 text-center whitespace-nowrap">
                         <Badge status={player.status} />
+                      </td>
+                      {/* Valoració editable amb estrelles */}
+                      <td className="py-3 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        <div className="inline-flex items-center gap-0.5" title={(player.rating ?? 0) > 0 ? `Valoració: ${player.rating}/5` : 'Sense valorar'}>
+                          {[1, 2, 3, 4, 5].map((n) => (
+                            <button
+                              key={n}
+                              type="button"
+                              onClick={() => handleRatingChange(player, n)}
+                              className="p-0.5 rounded hover:scale-125 transition-transform"
+                              aria-label={`${n} ${n === 1 ? 'estrella' : 'estrelles'}`}
+                            >
+                              <Star
+                                className={clsx(
+                                  'w-4 h-4',
+                                  n <= (player.rating ?? 0) ? 'fill-amber-400 text-amber-400' : 'text-slate-300'
+                                )}
+                              />
+                            </button>
+                          ))}
+                        </div>
                       </td>
                       <td className="py-3 px-3 text-center whitespace-nowrap">
                         <span className="inline-flex items-center justify-center min-w-7 px-2.5 py-1 rounded-lg font-bold text-xs bg-slate-100 text-slate-700 border border-slate-200">
@@ -934,6 +1013,7 @@ export const Players: React.FC = () => {
               options={[
                 { value: 'Candidato', label: 'Candidat' },
                 { value: 'Observado', label: 'Observat' },
+                { value: 'Interesante', label: 'Interessant' },
                 { value: 'Preseleccionado', label: 'Preseleccionat' },
                 { value: 'Seleccionado', label: 'Seleccionat' },
               ]}

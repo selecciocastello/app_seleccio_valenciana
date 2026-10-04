@@ -15,11 +15,16 @@ import {
   Plus,
   Star,
   Sparkles,
+  Trophy,
   ChevronRight
 } from 'lucide-react';
 import { JerseyBadge } from '../../components/ui/JerseyBadge';
 import { CustomSelect } from '../../components/ui/Select';
-import type { Team, Player } from '../../types/models';
+import type { Team, Player, Match } from '../../types/models';
+import { AgendaPickerModal } from '../../components/agenda/AgendaPickerModal';
+import { isMatchSchedulable } from '../../utils/agenda';
+import { formatMatchDateTime, formatAppDate } from '../../utils/dateFormatter';
+import { formatCompetition } from '../../utils/competitionFormatter';
 
 export const Teams: React.FC = () => {
   const navigate = useNavigate();
@@ -27,7 +32,6 @@ export const Teams: React.FC = () => {
     teams,
     players,
     agenda,
-    addToAgenda,
     updatePlayer,
     getTeamObservationCount,
     getTeamObservations,
@@ -37,30 +41,40 @@ export const Teams: React.FC = () => {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [scoutingFilter, setScoutingFilter] = useState<'all' | 'observed' | 'not_observed' | 'has_preselected'>('all');
-  const [sortBy, setSortBy] = useState<'name' | 'preselected_desc' | 'observed_desc' | 'observed_asc' | 'first_year' | 'second_year'>('name');
+  const [scoutingFilter, setScoutingFilter] = useState<'all' | 'observed' | 'not_observed' | 'has_preselected' | 'has_interesting'>('all');
+  const [sortBy, setSortBy] = useState<'name' | 'preselected_desc' | 'interesting_desc' | 'observed_desc' | 'observed_asc' | 'first_year' | 'second_year'>('name');
   const [selectedTeamForModal, setSelectedTeamForModal] = useState<Team | null>(null);
 
   // Lista única de categorías/competiciones disponibles
   const categoriesList = useMemo(() => {
     const set = new Set<string>();
     teams.forEach((t) => {
-      const cat = t.competition ? `${t.competition} - ${t.group || 'Grup 1'}` : 'Altres Equips';
-      set.add(cat);
+      const cat = formatCompetition(t.competition, t.group);
+      if (cat) set.add(cat);
     });
     return Array.from(set).sort();
   }, [teams]);
 
-  // Resumen global para las tarjetas superiores (cens real de jugadors de 2n i 1r any, observats i preseleccionats)
+  // Resumen global para las tarjetas superiores (cens real de jugadors de 2n i 1r any, observats, preseleccionats i interessants)
   const statsOverview = useMemo(() => {
     const total2nd = players.filter((p) => p.infantil_year === 'Infantil 2º año').length;
     const total1st = players.filter((p) => p.infantil_year === 'Infantil 1er año').length;
     const totalPreselected = players.filter((p) => p.status === 'Preseleccionado').length;
+    const totalInteresting = players.filter((p) => p.status === 'Interesante').length;
     let observedTeamsCount = 0;
+    let teamsWithInterestingCount = 0;
+    let teamsWithPreselectedCount = 0;
 
     teams.forEach((t) => {
       if (getTeamObservationCount(t.name) > 0) {
         observedTeamsCount++;
+      }
+      const breakdown = getTeamPlayersBreakdown(t.name);
+      if (breakdown.playersList.some((p) => p.status === 'Interesante')) {
+        teamsWithInterestingCount++;
+      }
+      if (breakdown.playersList.some((p) => p.status === 'Preseleccionado')) {
+        teamsWithPreselectedCount++;
       }
     });
 
@@ -71,26 +85,31 @@ export const Teams: React.FC = () => {
       total2nd,
       total1st,
       totalPreselected,
+      totalInteresting,
+      teamsWithInterestingCount,
+      teamsWithPreselectedCount,
       observedTeamsCount,
       observedPercentage
     };
-  }, [teams, players, getTeamObservationCount]);
+  }, [teams, players, getTeamObservationCount, getTeamPlayersBreakdown]);
 
   // Pre-computar estadísticas por equipo para rendimiento de filtrado y ordenación
   const teamsScoutingStats = useMemo(() => {
-    const map = new Map<string, { obsCount: number; firstYear: number; secondYear: number; total: number; preselectedCount: number }>();
+    const map = new Map<string, { obsCount: number; firstYear: number; secondYear: number; total: number; preselectedCount: number; interestingCount: number }>();
     
     teams.forEach((t) => {
       const breakdown = getTeamPlayersBreakdown(t.name);
       const obsCount = getTeamObservationCount(t.name);
       const preselectedCount = breakdown.playersList.filter((p) => p.status === 'Preseleccionado').length;
+      const interestingCount = breakdown.playersList.filter((p) => p.status === 'Interesante').length;
       
       map.set(t.name, {
         obsCount,
         firstYear: breakdown.firstYear,
         secondYear: breakdown.secondYear,
         total: breakdown.total,
-        preselectedCount
+        preselectedCount,
+        interestingCount
       });
     });
     
@@ -106,10 +125,10 @@ export const Teams: React.FC = () => {
         (t.city && t.city.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (t.field_name && t.field_name.toLowerCase().includes(searchTerm.toLowerCase()));
 
-      const teamCat = t.competition ? `${t.competition} - ${t.group || 'Grup 1'}` : 'Altres Equips';
+      const teamCat = formatCompetition(t.competition, t.group);
       const matchesCategory = selectedCategory === 'all' || teamCat === selectedCategory;
 
-      const teamStats = teamsScoutingStats.get(t.name) || { obsCount: 0, preselectedCount: 0 };
+      const teamStats = teamsScoutingStats.get(t.name) || { obsCount: 0, preselectedCount: 0, interestingCount: 0 };
       let matchesScouting = true;
       if (scoutingFilter === 'observed') {
         matchesScouting = teamStats.obsCount > 0;
@@ -117,19 +136,27 @@ export const Teams: React.FC = () => {
         matchesScouting = teamStats.obsCount === 0;
       } else if (scoutingFilter === 'has_preselected') {
         matchesScouting = teamStats.preselectedCount > 0;
+      } else if (scoutingFilter === 'has_interesting') {
+        matchesScouting = teamStats.interestingCount > 0;
       }
 
       return matchesSearch && matchesCategory && matchesScouting;
     });
 
     result.sort((a, b) => {
-      const statsA = teamsScoutingStats.get(a.name) || { obsCount: 0, firstYear: 0, secondYear: 0, preselectedCount: 0 };
-      const statsB = teamsScoutingStats.get(b.name) || { obsCount: 0, firstYear: 0, secondYear: 0, preselectedCount: 0 };
+      const statsA = teamsScoutingStats.get(a.name) || { obsCount: 0, firstYear: 0, secondYear: 0, preselectedCount: 0, interestingCount: 0 };
+      const statsB = teamsScoutingStats.get(b.name) || { obsCount: 0, firstYear: 0, secondYear: 0, preselectedCount: 0, interestingCount: 0 };
 
       if (sortBy === 'name') return a.name.localeCompare(b.name);
       if (sortBy === 'preselected_desc') {
         if (statsB.preselectedCount !== statsA.preselectedCount) {
           return statsB.preselectedCount - statsA.preselectedCount;
+        }
+        return a.name.localeCompare(b.name);
+      }
+      if (sortBy === 'interesting_desc') {
+        if (statsB.interestingCount !== statsA.interestingCount) {
+          return statsB.interestingCount - statsA.interestingCount;
         }
         return a.name.localeCompare(b.name);
       }
@@ -167,19 +194,21 @@ export const Teams: React.FC = () => {
   const groupedTeams = useMemo(() => {
     const map = new Map<string, Team[]>();
     filteredTeams.forEach((t) => {
-      const cat = t.competition ? `${t.competition} - ${t.group || 'Grup 1'}` : 'Lliga Infantil Castelló';
+      const cat = formatCompetition(t.competition, t.group);
       if (!map.has(cat)) map.set(cat, []);
       map.get(cat)!.push(t);
     });
     return map;
   }, [filteredTeams]);
 
+  const [pickerMatch, setPickerMatch] = useState<Match | null>(null);
+
   // Helper para verificar si un partido ya está en la agenda
   const isMatchInAgenda = (matchId: string) => {
     return agenda.some((a) => a.match_id === matchId);
   };
 
-  // Toggle preselección de jugador
+  // Toggle preselecció de jugador
   const handleTogglePreselected = (player: Player, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const isPreselected = player.status === 'Preseleccionado';
@@ -188,8 +217,18 @@ export const Teams: React.FC = () => {
     });
   };
 
+  // Toggle estat Interessant
+  const handleToggleInteresting = (player: Player, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const isInteresting = player.status === 'Interesante';
+    updatePlayer(player.id, {
+      status: isInteresting ? 'Candidato' : 'Interesante',
+    });
+  };
+
   return (
     <div className="space-y-6 animate-fade-in pb-12">
+      <AgendaPickerModal match={pickerMatch} onClose={() => setPickerMatch(null)} />
       {/* ── CABECERA Y METRICAS PRINCIPALES ───────────────────────────────────── */}
       <div className="bg-gradient-to-br from-[#061338] via-[#002568] to-[#003db3] rounded-2xl p-6 sm:p-8 text-white shadow-xl border border-blue-800/40 relative overflow-hidden">
         <div className="absolute right-0 top-0 w-96 h-96 bg-[#ff6600]/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
@@ -213,8 +252,8 @@ export const Teams: React.FC = () => {
             </div>
           </div>
 
-          {/* Tarjetas de Métricas Rápidas (5 Métricas Clave) */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-2">
+          {/* Tarjetas de Métricas Rápidas (6 Métricas Clave) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-2">
             {/* Total Equips */}
             <div className="bg-white/10 backdrop-blur-md rounded-xl p-3.5 border border-white/15">
               <div className="flex items-center justify-between">
@@ -250,6 +289,16 @@ export const Teams: React.FC = () => {
               <p className="text-[10px] text-yellow-200/70 mt-0.5">Candidats seleccionats</p>
             </div>
 
+            {/* Jugadors Interessants */}
+            <div className="bg-white/10 backdrop-blur-md rounded-xl p-3.5 border border-white/15">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-violet-200 uppercase tracking-wider">Interessants</span>
+                <Sparkles className="w-4 h-4 text-violet-300 fill-violet-300/30" />
+              </div>
+              <p className="text-2xl font-black text-violet-300 mt-1">{statsOverview.totalInteresting}</p>
+              <p className="text-[10px] text-violet-200/70 mt-0.5">Seguiment destacat</p>
+            </div>
+
             {/* Jugadors 1r Any */}
             <div className="bg-white/10 backdrop-blur-md rounded-xl p-3.5 border border-white/15">
               <div className="flex items-center justify-between">
@@ -261,7 +310,7 @@ export const Teams: React.FC = () => {
             </div>
 
             {/* Jugadors 2n Any */}
-            <div className="bg-white/10 backdrop-blur-md rounded-xl p-3.5 border border-white/15 col-span-2 sm:col-span-1">
+            <div className="bg-white/10 backdrop-blur-md rounded-xl p-3.5 border border-white/15">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-indigo-200 uppercase tracking-wider">Jugadors 2n Any</span>
                 <span className="w-2.5 h-2.5 rounded-full bg-indigo-400 shadow-sm shadow-indigo-400/50" />
@@ -318,6 +367,7 @@ export const Teams: React.FC = () => {
               options={[
                 { value: 'name', label: 'Ordenar: Nom (A-Z)' },
                 { value: 'preselected_desc', label: '⭐ Més preseleccionats primer' },
+                { value: 'interesting_desc', label: '✨ Més interessants primer' },
                 { value: 'observed_desc', label: '👁️ Més observats primer' },
                 { value: 'observed_asc', label: 'Menys observats primer' },
                 { value: 'first_year', label: '🟢 Més jugadors 1r any (2014)' },
@@ -351,7 +401,18 @@ export const Teams: React.FC = () => {
             }`}
           >
             <Star className="w-3 h-3 fill-current" />
-            Amb preseleccionats
+            Amb preseleccionats ({statsOverview.teamsWithPreselectedCount})
+          </button>
+          <button
+            onClick={() => setScoutingFilter('has_interesting')}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+              scoutingFilter === 'has_interesting'
+                ? 'bg-violet-600 text-white shadow-sm font-black'
+                : 'bg-slate-950 text-violet-300/80 hover:text-violet-300 hover:bg-slate-800'
+            }`}
+          >
+            <Sparkles className="w-3 h-3 text-violet-300 fill-violet-300/40" />
+            Amb interessants ({statsOverview.teamsWithInterestingCount})
           </button>
           <button
             onClick={() => setScoutingFilter('observed')}
@@ -410,7 +471,8 @@ export const Teams: React.FC = () => {
                   firstYear: 0,
                   secondYear: 0,
                   total: 0,
-                  preselectedCount: 0
+                  preselectedCount: 0,
+                  interestingCount: 0
                 };
                 const nextMatch = getTeamNextMatch(team.name);
 
@@ -434,7 +496,7 @@ export const Teams: React.FC = () => {
                     {/* Parte Superior: Escudo, Nombre y Club */}
                     <div>
                       <div className="flex items-start gap-3.5">
-                        <div className="w-12 h-12 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center shrink-0 overflow-hidden shadow-inner p-1 group-hover:scale-105 transition-transform">
+                        <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 flex items-center justify-center shrink-0 overflow-hidden shadow-sm p-1 group-hover:scale-105 transition-transform">
                           {team.crest_url ? (
                             <img
                               src={team.crest_url}
@@ -452,6 +514,14 @@ export const Teams: React.FC = () => {
                         </div>
 
                         <div className="flex-1 min-w-0">
+                          {/* Insígnia de la Lliga / Categoria */}
+                          <div className="flex items-center gap-1 mb-1">
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-sky-500/15 text-sky-300 border border-sky-500/30 truncate max-w-full">
+                              <Trophy className="w-2.5 h-2.5 text-sky-400 shrink-0" />
+                              <span className="truncate">{formatCompetition(team.competition, team.group)}</span>
+                            </span>
+                          </div>
+
                           <h3 className="text-sm font-black text-white line-clamp-2 break-words group-hover:text-sky-300 transition-colors">
                             {team.name}
                           </h3>
@@ -466,39 +536,39 @@ export const Teams: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Cuadrícula de Métricas Clave (4 Estadísticas: 2n Any, 1r Any, Preseleccionats, Observat) */}
-                      <div className="grid grid-cols-4 gap-1.5 sm:gap-2 mt-4">
+                      {/* Cuadrícula de Métricas Clave (5 Estadísticas: 2n Any, 1r Any, Pre, Int, Obs) */}
+                      <div className="grid grid-cols-5 gap-1 sm:gap-1.5 mt-4">
                         {/* 2º Año */}
-                        <div className="bg-indigo-950/40 border border-indigo-900/40 rounded-lg p-2 text-center">
-                          <span className="text-[9px] font-bold text-indigo-300 uppercase tracking-wider block">
+                        <div className="bg-indigo-950/40 border border-indigo-900/40 rounded-lg p-1.5 text-center">
+                          <span className="text-[8.5px] font-bold text-indigo-300 uppercase tracking-wider block">
                             2n Any
                           </span>
                           <span className="text-sm font-black text-indigo-200 mt-0.5 block">
                             {teamStats.secondYear}
                           </span>
-                          <span className="text-[8px] text-indigo-400/80">2013</span>
+                          <span className="text-[7.5px] text-indigo-400/80">2013</span>
                         </div>
 
                         {/* 1er Año */}
-                        <div className="bg-emerald-950/40 border border-emerald-900/40 rounded-lg p-2 text-center">
-                          <span className="text-[9px] font-bold text-emerald-300 uppercase tracking-wider block">
+                        <div className="bg-emerald-950/40 border border-emerald-900/40 rounded-lg p-1.5 text-center">
+                          <span className="text-[8.5px] font-bold text-emerald-300 uppercase tracking-wider block">
                             1r Any
                           </span>
                           <span className="text-sm font-black text-emerald-200 mt-0.5 block">
                             {teamStats.firstYear}
                           </span>
-                          <span className="text-[8px] text-emerald-400/80">2014</span>
+                          <span className="text-[7.5px] text-emerald-400/80">2014</span>
                         </div>
 
                         {/* Preseleccionats */}
                         <div
-                          className={`rounded-lg p-2 text-center border transition-colors ${
+                          className={`rounded-lg p-1.5 text-center border transition-colors ${
                             teamStats.preselectedCount > 0
                               ? 'bg-amber-950/50 border-amber-500/40 shadow-sm'
                               : 'bg-slate-950/40 border-slate-800'
                           }`}
                         >
-                          <span className="text-[9px] font-bold text-yellow-300 uppercase tracking-wider flex items-center justify-center gap-0.5">
+                          <span className="text-[8.5px] font-bold text-yellow-300 uppercase tracking-wider flex items-center justify-center gap-0.5">
                             <Star className={`w-2.5 h-2.5 ${teamStats.preselectedCount > 0 ? 'fill-yellow-400 text-yellow-400' : 'text-slate-500'}`} />
                             Pre
                           </span>
@@ -509,18 +579,40 @@ export const Teams: React.FC = () => {
                           >
                             {teamStats.preselectedCount}
                           </span>
-                          <span className="text-[8px] text-yellow-400/70">selec</span>
+                          <span className="text-[7.5px] text-yellow-400/70">selec</span>
+                        </div>
+
+                        {/* Interessants */}
+                        <div
+                          className={`rounded-lg p-1.5 text-center border transition-colors ${
+                            teamStats.interestingCount > 0
+                              ? 'bg-violet-950/50 border-violet-500/40 shadow-sm'
+                              : 'bg-slate-950/40 border-slate-800'
+                          }`}
+                        >
+                          <span className="text-[8.5px] font-bold text-violet-300 uppercase tracking-wider flex items-center justify-center gap-0.5">
+                            <Sparkles className={`w-2.5 h-2.5 ${teamStats.interestingCount > 0 ? 'text-violet-300 fill-violet-300/40' : 'text-slate-500'}`} />
+                            Int
+                          </span>
+                          <span
+                            className={`text-sm font-black mt-0.5 block ${
+                              teamStats.interestingCount > 0 ? 'text-violet-300' : 'text-slate-500'
+                            }`}
+                          >
+                            {teamStats.interestingCount}
+                          </span>
+                          <span className="text-[7.5px] text-violet-400/70">destac</span>
                         </div>
 
                         {/* Veces Observado */}
                         <div
-                          className={`rounded-lg p-2 text-center border transition-colors ${
+                          className={`rounded-lg p-1.5 text-center border transition-colors ${
                             teamStats.obsCount > 0
                               ? 'bg-sky-950/40 border-sky-900/50'
                               : 'bg-slate-950/40 border-slate-800'
                           }`}
                         >
-                          <span className="text-[9px] font-bold text-sky-300 uppercase tracking-wider flex items-center justify-center gap-0.5">
+                          <span className="text-[8.5px] font-bold text-sky-300 uppercase tracking-wider flex items-center justify-center gap-0.5">
                             <Eye className="w-2.5 h-2.5" /> Obs
                           </span>
                           <span
@@ -530,7 +622,7 @@ export const Teams: React.FC = () => {
                           >
                             {teamStats.obsCount}
                           </span>
-                          <span className="text-[8px] text-slate-400">
+                          <span className="text-[7.5px] text-slate-400">
                             {teamStats.obsCount === 1 ? 'partit' : 'partits'}
                           </span>
                         </div>
@@ -564,7 +656,7 @@ export const Teams: React.FC = () => {
                                   <img
                                     src={rivalCrest}
                                     alt={rivalName || ''}
-                                    className="w-3.5 h-3.5 object-contain inline-block shrink-0"
+                                    className="w-4 h-4 object-contain inline-block shrink-0 bg-white rounded p-0.5 border border-slate-200 shadow-sm"
                                     onError={(e) => {
                                       (e.currentTarget as HTMLImageElement).style.display = 'none';
                                     }}
@@ -575,24 +667,26 @@ export const Teams: React.FC = () => {
                             </div>
 
                             <div className="flex items-center justify-between text-[11px] text-slate-400">
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3 text-slate-500" />
-                                {nextMatch.match_date ? nextMatch.match_date.slice(0, 10) : 'Per definir'}
-                                {nextMatch.time ? ` · ${nextMatch.time}` : ''}
+                              <span className="flex items-center gap-1 font-semibold text-slate-300">
+                                <Clock className="w-3 h-3 text-sky-400 shrink-0" />
+                                {formatMatchDateTime(nextMatch)}
                               </span>
 
                               {/* Botón rápido para añadir a la agenda */}
-                              {!isMatchInAgenda(nextMatch.id) ? (
+                              {!isMatchSchedulable(nextMatch) ? null : !isMatchInAgenda(nextMatch.id) ? (
                                 <button
-                                  onClick={() => addToAgenda(nextMatch)}
+                                  onClick={() => setPickerMatch(nextMatch)}
                                   className="text-[10px] font-bold text-[#ff6600] hover:text-orange-400 hover:underline flex items-center gap-0.5"
                                 >
                                   <Plus className="w-3 h-3" /> Afegir a agenda
                                 </button>
                               ) : (
-                                <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-0.5">
+                                <button
+                                  onClick={() => setPickerMatch(nextMatch)}
+                                  className="text-[10px] font-bold text-emerald-400 hover:underline flex items-center gap-0.5"
+                                >
                                   <CheckCircle2 className="w-3 h-3" /> En agenda
-                                </span>
+                                </button>
                               )}
                             </div>
 
@@ -642,7 +736,7 @@ export const Teams: React.FC = () => {
             {/* Cabecera del Modal */}
             <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
               <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 rounded-xl bg-slate-900 border border-slate-700 flex items-center justify-center p-1 overflow-hidden shadow-inner">
+                <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 flex items-center justify-center p-1 overflow-hidden shadow-sm">
                   {selectedTeamForModal.crest_url ? (
                     <img
                       src={selectedTeamForModal.crest_url}
@@ -656,6 +750,12 @@ export const Teams: React.FC = () => {
                   )}
                 </div>
                 <div>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                      <Trophy className="w-3 h-3 text-sky-400" />
+                      <span>{formatCompetition(selectedTeamForModal.competition, selectedTeamForModal.group)}</span>
+                    </span>
+                  </div>
                   <h3 className="text-base font-black text-white">{selectedTeamForModal.name}</h3>
                   <p className="text-xs text-slate-400">
                     {selectedTeamForModal.club} · {selectedTeamForModal.city || 'Castelló'}
@@ -677,6 +777,7 @@ export const Teams: React.FC = () => {
                 const breakdown = getTeamPlayersBreakdown(selectedTeamForModal.name);
                 const playersList = breakdown.playersList;
                 const preselectedInTeam = playersList.filter((p) => p.status === 'Preseleccionado').length;
+                const interestingInTeam = playersList.filter((p) => p.status === 'Interesante').length;
 
                 if (playersList.length === 0) {
                   return (
@@ -691,17 +792,25 @@ export const Teams: React.FC = () => {
                     {/* Estadísticas de la plantilla */}
                     <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400 pb-3 border-b border-slate-800 bg-slate-950/40 p-3 rounded-xl">
                       <span>Total: <strong className="text-white">{playersList.length} jugadors</strong></span>
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="text-indigo-400 font-bold bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-900/50">
                           {breakdown.secondYear} de 2n any (2013)
                         </span>
                         <span className="text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-900/50">
                           {breakdown.firstYear} de 1r any (2014)
                         </span>
-                        <span className="text-yellow-400 font-bold bg-amber-950/60 px-2 py-0.5 rounded border border-amber-900/50 flex items-center gap-1">
-                          <Star className="w-3 h-3 fill-yellow-400" />
-                          {preselectedInTeam} preseleccionats
-                        </span>
+                        {preselectedInTeam > 0 && (
+                          <span className="text-yellow-400 font-bold bg-amber-950/60 px-2 py-0.5 rounded border border-amber-900/50 flex items-center gap-1">
+                            <Star className="w-3 h-3 fill-yellow-400" />
+                            {preselectedInTeam} preseleccionats
+                          </span>
+                        )}
+                        {interestingInTeam > 0 && (
+                          <span className="text-violet-300 font-bold bg-violet-950/60 px-2 py-0.5 rounded border border-violet-900/50 flex items-center gap-1">
+                            <Sparkles className="w-3 h-3 text-violet-400 fill-violet-400/40" />
+                            {interestingInTeam} interessants
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -709,6 +818,7 @@ export const Teams: React.FC = () => {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {playersList.map((player: Player) => {
                         const isPreselected = player.status === 'Preseleccionado';
+                        const isInteresting = player.status === 'Interesante';
                         const isFirstYear = player.infantil_year === 'Infantil 1er año';
 
                         return (
@@ -717,6 +827,8 @@ export const Teams: React.FC = () => {
                             className={`border rounded-xl p-3 flex flex-col justify-between gap-2.5 transition-all ${
                               isPreselected
                                 ? 'bg-amber-950/20 border-amber-500/40'
+                                : isInteresting
+                                ? 'bg-violet-950/20 border-violet-500/40'
                                 : 'bg-slate-950/60 border-slate-800/80 hover:border-slate-700'
                             }`}
                           >
@@ -763,22 +875,36 @@ export const Teams: React.FC = () => {
                               </div>
                             </div>
 
-                            {/* Fila inferior: Botón Preseleccionar y Comentario técnico */}
+                            {/* Fila inferior: Botons Preseleccionar / Interessant i Comentari tècnic */}
                             <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800/60">
-                              <button
-                                onClick={(e) => handleTogglePreselected(player, e)}
-                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all ${
-                                  isPreselected
-                                    ? 'bg-amber-500 text-slate-950 hover:bg-amber-400 font-black shadow-sm'
-                                    : 'bg-slate-900 border border-slate-700 text-slate-300 hover:text-white hover:border-amber-500/60'
-                                }`}
-                              >
-                                <Star className={`w-3 h-3 ${isPreselected ? 'fill-current' : ''}`} />
-                                {isPreselected ? 'Preseleccionat' : 'Preseleccionar'}
-                              </button>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  onClick={(e) => handleTogglePreselected(player, e)}
+                                  className={`px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all ${
+                                    isPreselected
+                                      ? 'bg-amber-500 text-slate-950 hover:bg-amber-400 font-black shadow-sm'
+                                      : 'bg-slate-900 border border-slate-700 text-slate-300 hover:text-white hover:border-amber-500/60'
+                                  }`}
+                                >
+                                  <Star className={`w-2.5 h-2.5 ${isPreselected ? 'fill-current' : ''}`} />
+                                  {isPreselected ? 'Pre' : 'Pre'}
+                                </button>
+
+                                <button
+                                  onClick={(e) => handleToggleInteresting(player, e)}
+                                  className={`px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all ${
+                                    isInteresting
+                                      ? 'bg-violet-600 text-white hover:bg-violet-500 font-black shadow-sm'
+                                      : 'bg-slate-900 border border-slate-700 text-slate-300 hover:text-white hover:border-violet-500/60'
+                                  }`}
+                                >
+                                  <Sparkles className={`w-2.5 h-2.5 ${isInteresting ? 'fill-current text-violet-200' : 'text-slate-400'}`} />
+                                  {isInteresting ? 'Interessant' : 'Interès'}
+                                </button>
+                              </div>
 
                               {player.notes ? (
-                                <span className="text-[10px] text-slate-400 italic truncate max-w-[150px]">
+                                <span className="text-[10px] text-slate-400 italic truncate max-w-[130px]">
                                   "{player.notes}"
                                 </span>
                               ) : (
@@ -809,7 +935,7 @@ export const Teams: React.FC = () => {
                                 <div className="flex items-center justify-between font-bold text-slate-200 mb-1">
                                   <span>{obs.home_team_name} vs {obs.away_team_name}</span>
                                   <span className="text-[10px] text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/40">
-                                    {obs.observed_at ? obs.observed_at.slice(0, 10) : (obs.scheduled_date || obs.created_at.slice(0, 10))}
+                                    {formatAppDate(obs.observed_at || obs.scheduled_date || obs.created_at)}
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-2 text-[11px] text-slate-400">

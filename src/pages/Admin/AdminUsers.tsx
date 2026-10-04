@@ -5,6 +5,7 @@ import { Badge } from '../../components/ui/Badge';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useToast } from '../../contexts/ToastContext';
+import { formatAppDate } from '../../utils/dateFormatter';
 
 export const AdminUsers: React.FC = () => {
   const { users, user: currentUser, addUser, updateUser, toggleUserStatus, deleteUser, appSettings } = useAuth();
@@ -175,7 +176,7 @@ export const AdminUsers: React.FC = () => {
                         </Badge>
                       </td>
 
-                      <td className="p-4 text-slate-500">{u.last_login || 'Sens dades'}</td>
+                      <td className="p-4 text-slate-500">{u.last_login ? formatAppDate(u.last_login) : 'Sens dades'}</td>
 
                       <td className="p-4">
                         <button

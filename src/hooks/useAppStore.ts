@@ -3,7 +3,10 @@ import type { Player, Team, Match, Callup, TrainingSession, PlayerReport, Scouti
 import { supabaseService } from '../services/supabaseService';
 import { calculateInfantilYear } from '../utils/infantilYear';
 import { cacheGet, cacheSet } from '../utils/dataCache';
+import { isSameSelector } from '../utils/agenda';
 import scrapedPlayersData from '../data/scraped_players.json';
+import scrapedTeamsData from '../data/scraped_teams.json';
+import scrapedMatchesData from '../data/scraped_matches.json';
 
 const scrapedPlayersLookup = new Map<string, any>();
 (scrapedPlayersData as any[]).forEach((sp) => {
@@ -11,6 +14,23 @@ const scrapedPlayersLookup = new Map<string, any>();
   if (sp.source_player_id) scrapedPlayersLookup.set(String(sp.source_player_id), sp);
   if (sp.id) scrapedPlayersLookup.set(String(sp.id), sp);
   if (sp.full_name) scrapedPlayersLookup.set(sp.full_name.trim().toLowerCase(), sp);
+});
+
+const scrapedTeamsLookup = new Map<string, any>();
+(scrapedTeamsData as any[]).forEach((st) => {
+  if (st.id) scrapedTeamsLookup.set(String(st.id), st);
+  if (st.ffcv_cod) scrapedTeamsLookup.set(String(st.ffcv_cod), st);
+  if (st.name) scrapedTeamsLookup.set(st.name.trim().toLowerCase(), st);
+});
+
+const scrapedMatchesLookup = new Map<string, any>();
+(scrapedMatchesData as any[]).forEach((sm) => {
+  if (sm.id) scrapedMatchesLookup.set(String(sm.id), sm);
+  if (sm.codacta) scrapedMatchesLookup.set(String(sm.codacta), sm);
+  if (sm.home_team && sm.away_team) {
+    const key = `${sm.home_team.trim().toLowerCase()} vs ${sm.away_team.trim().toLowerCase()}`;
+    scrapedMatchesLookup.set(key, sm);
+  }
 });
 
 const INITIAL_TRAININGS: TrainingSession[] = [];
@@ -27,7 +47,7 @@ interface HeavyCache extends HeavyData {
   savedAt: number;
 }
 
-const HEAVY_CACHE_KEY = 'heavy_data_v3';
+const HEAVY_CACHE_KEY = 'heavy_data_v4';
 // Aunque la versión no cambie, se refresca como mucho una vez al día
 const HEAVY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -205,9 +225,42 @@ let memoryMatches: Match[] = [];
 let memoryCallups: Callup[] = loadStoredCallups();
 let memoryTrainings: TrainingSession[] = INITIAL_TRAININGS;
 let memoryReports: PlayerReport[] = INITIAL_REPORTS;
+const AGENDA_STORAGE_KEY = 'scouting_agenda';
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+let memoryAgenda: ScoutingAgendaItem[] = loadStoredAgenda();
 let isDataLoadedFromDb = false;
 let heavyCacheVersion: string | null = null;
 let heavyCacheSavedAt = 0;
+
+
+// La columna id de scouting_agenda es UUID: los ids antiguos 'ag_...' se migran al cargar
+function loadStoredAgenda(): ScoutingAgendaItem[] {
+  try {
+    const raw = localStorage.getItem(AGENDA_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((a: ScoutingAgendaItem) => (UUID_RE.test(a.id) ? a : { ...a, id: crypto.randomUUID() }));
+  } catch {
+    return [];
+  }
+}
+
+function setMemoryAgenda(next: ScoutingAgendaItem[]) {
+  memoryAgenda = next;
+  try {
+    localStorage.setItem(AGENDA_STORAGE_KEY, JSON.stringify(memoryAgenda));
+  } catch {}
+  notify();
+}
+
+// Guarda en Supabase y marca el item como sincronizado
+function saveAgendaItemToDb(item: ScoutingAgendaItem) {
+  if (!supabaseService.isConfigured()) return;
+  supabaseService.saveAgendaItem(item).then((saved) => {
+    if (!saved) return;
+    setMemoryAgenda(memoryAgenda.map((a) => (a.id === item.id ? { ...a, synced: true } : a)));
+  });
+}
 
 function persistCallups() {
   try {
@@ -229,6 +282,38 @@ function persistHeavyCache() {
 }
 
 function applyHeavyData(data: HeavyData) {
+  if (data.teams.length > 0) {
+    memoryTeams = data.teams.map((t) => {
+      const match =
+        (t.id && scrapedTeamsLookup.get(String(t.id))) ||
+        (t.name && scrapedTeamsLookup.get(t.name.trim().toLowerCase()));
+
+      const competition = t.competition || match?.competition || 'Lliga Preferent Infantil';
+      const group = t.group || match?.group || 'Grup - 1';
+      const crest_url = t.crest_url || match?.crest_url;
+      const field_name = t.field_name || match?.field_name;
+      const city = t.city && t.city !== '0' ? t.city : match?.city || 'Castelló';
+      const province = t.province && t.province !== 'Otra' ? t.province : match?.province || 'Castelló';
+
+      return {
+        ...t,
+        competition,
+        group,
+        crest_url,
+        field_name,
+        city,
+        province
+      };
+    });
+  }
+
+  // Mapa per a associar equips per nom i id
+  const teamsMap = new Map<string, Team>();
+  memoryTeams.forEach((t) => {
+    teamsMap.set(t.id, t);
+    teamsMap.set(t.name.trim().toLowerCase(), t);
+  });
+
   if (data.players.length > 0) {
     memoryPlayers = data.players.map((p) => {
       const match =
@@ -248,16 +333,54 @@ function applyHeavyData(data: HeavyData) {
       const birthDate = p.birth_date || (match && match.birth_date);
       const calculatedYear = calculateInfantilYear(p.history, p.age, p.infantil_year, birthYear);
 
+      const teamId = p.team_id || (p.team && typeof p.team === 'object' ? p.team.id : undefined);
+      const teamName = (p.team && typeof p.team === 'object' ? p.team.name : p.team) || '';
+      const matchedTeam = (teamId ? teamsMap.get(teamId) : undefined) || (teamName ? teamsMap.get(teamName.trim().toLowerCase()) : undefined);
+
       return {
         ...p,
         birth_year: birthYear,
         birth_date: birthDate,
-        infantil_year: calculatedYear
+        infantil_year: calculatedYear,
+        team_id: matchedTeam?.id || p.team_id,
+        team: matchedTeam
+          ? {
+              id: matchedTeam.id,
+              name: matchedTeam.name,
+              club: matchedTeam.club || matchedTeam.name,
+              crest_url: matchedTeam.crest_url,
+              city: matchedTeam.city || 'Castelló',
+              competition: matchedTeam.competition,
+              group: matchedTeam.group
+            }
+          : p.team
       };
     });
   }
-  if (data.teams.length > 0) memoryTeams = data.teams;
-  if (data.matches.length > 0) memoryMatches = data.matches;
+
+  if (data.matches.length > 0) {
+    memoryMatches = data.matches.map((m) => {
+      const match =
+        (m.id && scrapedMatchesLookup.get(String(m.id))) ||
+        (m.home_team_name && m.away_team_name && scrapedMatchesLookup.get(`${m.home_team_name.trim().toLowerCase()} vs ${m.away_team_name.trim().toLowerCase()}`));
+
+      const homeTeam = (m.home_team_id ? teamsMap.get(m.home_team_id) : undefined) || (m.home_team_name ? teamsMap.get(m.home_team_name.trim().toLowerCase()) : undefined);
+      const awayTeam = (m.away_team_id ? teamsMap.get(m.away_team_id) : undefined) || (m.away_team_name ? teamsMap.get(m.away_team_name.trim().toLowerCase()) : undefined);
+
+      const competition_name = m.competition_name || match?.competition || homeTeam?.competition || awayTeam?.competition || 'Lliga Preferent Infantil';
+      const group_name = m.group_name || match?.group || homeTeam?.group || awayTeam?.group || 'Grup - 1';
+      const home_crest = m.home_crest || match?.home_crest || homeTeam?.crest_url;
+      const away_crest = m.away_crest || match?.away_crest || awayTeam?.crest_url;
+
+      return {
+        ...m,
+        competition_name,
+        group_name,
+        home_crest,
+        away_crest
+      };
+    });
+  }
 }
 
 // Jugadores, equipos y partidos: caché local -> Supabase solo si hay cambios -> JSON del repo
@@ -320,21 +443,8 @@ export function useAppStore() {
     };
   }, []);
 
-  const [agenda, setAgenda] = useState<ScoutingAgendaItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('scouting_agenda');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  const agenda = memoryAgenda;
   const [isSupabaseConnected, setIsSupabaseConnected] = useState<boolean>(isDataLoadedFromDb);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('scouting_agenda', JSON.stringify(agenda));
-    } catch {}
-  }, [agenda]);
 
   useEffect(() => {
     if (isDataLoadedFromDb) return;
@@ -362,17 +472,20 @@ export function useAppStore() {
         }
         if (dbReports.length > 0) memoryReports = dbReports;
 
-        if (dbAgenda.length > 0) {
-          setAgenda((prev) => {
-            const merged = [...dbAgenda];
-            for (const localItem of prev) {
-              if (!merged.some((m) => m.id === localItem.id || m.match_id === localItem.match_id)) {
-                merged.push(localItem);
-              }
-            }
-            return merged;
-          });
+        // Supabase manda. Los locales que nunca llegaron a subirse se suben ahora;
+        // los ya sincronizados que no están en la BD se borraron desde otro dispositivo.
+        const merged: ScoutingAgendaItem[] = dbAgenda.map((a) => ({ ...a, synced: true }));
+        for (const localItem of memoryAgenda) {
+          const inDb = merged.some(
+            (m) =>
+              m.id === localItem.id ||
+              (m.match_id === localItem.match_id && isSameSelector(m.selector_name, localItem.selector_name))
+          );
+          if (inDb || localItem.synced) continue;
+          merged.push(localItem);
+          saveAgendaItemToDb(localItem);
         }
+        setMemoryAgenda(merged);
 
         notify();
       });
@@ -538,14 +651,17 @@ export function useAppStore() {
 
   // --- AGENDA & OBSERVACIONES ---
   const addToAgenda = (match: Match, selectorName?: string) => {
-    const existing = agenda.find((a) => a.match_id === match.id);
+    const selector = selectorName || 'Seleccionador';
+    const existing = memoryAgenda.find(
+      (a) => a.match_id === match.id && isSameSelector(a.selector_name, selector)
+    );
     if (existing) return existing;
 
     const newItem: ScoutingAgendaItem = {
-      id: `ag_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      id: crypto.randomUUID(),
       match_id: match.id,
       match,
-      selector_name: selectorName || 'Seleccionador',
+      selector_name: selector,
       status: 'Planificat',
       scheduled_date: match.match_date,
       home_team_name: match.home_team_name || 'Local',
@@ -554,23 +670,20 @@ export function useAppStore() {
       created_at: new Date().toISOString()
     };
 
-    setAgenda((prev) => [newItem, ...prev]);
-
-    if (supabaseService.isConfigured()) {
-      supabaseService.saveAgendaItem(newItem);
-    }
+    setMemoryAgenda([newItem, ...memoryAgenda]);
+    saveAgendaItemToDb(newItem);
     return newItem;
   };
 
-  const removeFromAgenda = (agendaIdOrMatchId: string) => {
-    setAgenda((prev) => prev.filter((a) => a.id !== agendaIdOrMatchId && a.match_id !== agendaIdOrMatchId));
+  const removeFromAgenda = (agendaId: string) => {
+    setMemoryAgenda(memoryAgenda.filter((a) => a.id !== agendaId));
     if (supabaseService.isConfigured()) {
-      supabaseService.deleteAgendaItem(agendaIdOrMatchId);
+      supabaseService.deleteAgendaItem(agendaId);
     }
   };
 
   const markMatchAsObserved = (
-    agendaIdOrMatchId: string,
+    agendaId: string,
     details?: {
       observedTeams?: string[];
       notes?: string;
@@ -578,24 +691,20 @@ export function useAppStore() {
       observedAt?: string;
     }
   ) => {
-    setAgenda((prev) =>
-      prev.map((item) => {
-        if (item.id === agendaIdOrMatchId || item.match_id === agendaIdOrMatchId) {
-          const updated: ScoutingAgendaItem = {
-            ...item,
-            status: 'Observat',
-            observed_at: details?.observedAt || new Date().toISOString(),
-            notes: details?.notes !== undefined ? details.notes : item.notes,
-            observed_teams: details?.observedTeams || item.observed_teams,
-            standout_players: details?.standoutPlayers || item.standout_players || [],
-            updated_at: new Date().toISOString()
-          };
-          if (supabaseService.isConfigured()) {
-            supabaseService.saveAgendaItem(updated);
-          }
-          return updated;
-        }
-        return item;
+    setMemoryAgenda(
+      memoryAgenda.map((item) => {
+        if (item.id !== agendaId) return item;
+        const updated: ScoutingAgendaItem = {
+          ...item,
+          status: 'Observat',
+          observed_at: details?.observedAt || new Date().toISOString(),
+          notes: details?.notes !== undefined ? details.notes : item.notes,
+          observed_teams: details?.observedTeams || item.observed_teams,
+          standout_players: details?.standoutPlayers || item.standout_players || [],
+          updated_at: new Date().toISOString()
+        };
+        saveAgendaItemToDb(updated);
+        return updated;
       })
     );
   };

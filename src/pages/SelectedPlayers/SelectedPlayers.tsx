@@ -28,6 +28,7 @@ import { useAppStore } from '../../hooks/useAppStore';
 import { useToast } from '../../contexts/ToastContext';
 import type { Player } from '../../types/models';
 import { PlayerPhoto } from '../../components/ui/PlayerPhoto';
+import { formatAppDate } from '../../utils/dateFormatter';
 
 type ViewMode = 'list_position' | 'cards_position' | 'team' | 'grid';
 type StatusFilter = 'all' | 'Preseleccionado' | 'Seleccionado' | 'all_pool';
@@ -795,7 +796,7 @@ export const SelectedPlayers: React.FC = () => {
                                       <img
                                         src={player.team.crest_url}
                                         alt={player.team.name}
-                                        className="w-4 h-4 object-contain shrink-0"
+                                        className="w-5 h-5 object-contain shrink-0 bg-white rounded p-0.5 border border-slate-200 shadow-sm"
                                         onError={(e) => {
                                           (e.currentTarget as HTMLImageElement).style.display = 'none';
                                         }}
@@ -1041,7 +1042,7 @@ export const SelectedPlayers: React.FC = () => {
                           <img
                             src={group.crestUrl}
                             alt={group.name}
-                            className="w-6 h-6 object-contain"
+                            className="w-7 h-7 object-contain bg-white rounded-lg p-1 border border-slate-200 shadow-sm"
                             onError={(e) => {
                               (e.currentTarget as HTMLImageElement).style.display = 'none';
                             }}
@@ -1230,7 +1231,7 @@ export const SelectedPlayers: React.FC = () => {
                               </div>
                               <p className="text-[11px] font-semibold text-slate-500 mt-1 flex items-center gap-2">
                                 <Calendar className="w-3 h-3 text-[#ff6600]" />
-                                {new Date(callup.date).toLocaleDateString('ca-ES')} •
+                                {formatAppDate(callup.date)} •
                                 <MapPin className="w-3 h-3 text-slate-400" />
                                 <span className="truncate">{callup.location}</span>
                               </p>
@@ -1439,7 +1440,7 @@ const PlayerCardInteractive: React.FC<PlayerCardInteractiveProps> = ({
               <img
                 src={player.team.crest_url}
                 alt={player.team.name}
-                className="w-4 h-4 object-contain shrink-0"
+                className="w-5 h-5 object-contain shrink-0 bg-white rounded p-0.5 border border-slate-200 shadow-sm"
                 onError={(e) => {
                   (e.currentTarget as HTMLImageElement).style.display = 'none';
                 }}

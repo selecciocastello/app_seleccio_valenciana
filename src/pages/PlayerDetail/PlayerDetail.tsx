@@ -36,6 +36,7 @@ import { JerseyBadge } from '../../components/ui/JerseyBadge';
 import { StarRating } from '../../components/ui/StarRating';
 import { PLAYER_POSITIONS } from '../../types/models';
 import { PlayerPhoto } from '../../components/ui/PlayerPhoto';
+import { formatAppDate } from '../../utils/dateFormatter';
 
 export const PlayerDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -292,7 +293,7 @@ export const PlayerDetail: React.FC = () => {
                     <img
                       src={player.team.crest_url}
                       alt={player.team.name}
-                      className="w-4 h-4 object-contain inline-block"
+                      className="w-5 h-5 object-contain inline-block bg-white rounded p-0.5 border border-slate-200 shadow-sm"
                       onError={(e) => {
                         (e.currentTarget as HTMLImageElement).style.display = 'none';
                       }}
@@ -365,6 +366,7 @@ export const PlayerDetail: React.FC = () => {
                 options={[
                   { value: 'Candidato', label: 'Estat: Candidat' },
                   { value: 'Observado', label: 'Estat: Observat' },
+                  { value: 'Interesante', label: 'Estat: Interessant' },
                   { value: 'Preseleccionado', label: 'Estat: Preseleccionat' },
                   { value: 'Seleccionado', label: 'Estat: Seleccionat' },
                   { value: 'Lesionado', label: 'Estat: Lesionat' },
@@ -740,7 +742,7 @@ export const PlayerDetail: React.FC = () => {
                     <img
                       src={player.team.crest_url}
                       alt={player.team.name}
-                      className="w-7 h-7 object-contain shrink-0"
+                      className="w-8 h-8 object-contain shrink-0 bg-white rounded-lg p-1 border border-slate-200 shadow-sm"
                       onError={(e) => {
                         (e.currentTarget as HTMLImageElement).style.display = 'none';
                       }}
@@ -768,7 +770,7 @@ export const PlayerDetail: React.FC = () => {
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <span className="text-slate-500 block font-semibold">Edat / Data Naixement:</span>
                   <span className="text-slate-900 font-bold mt-0.5 block">
-                    {player.birth_date ? `${player.birth_date} (${player.age || 13} anys)` : (player.age ? `${player.age} anys` : 'Sense data')}
+                    {player.birth_date ? `${formatAppDate(player.birth_date)} (${player.age || 13} anys)` : (player.age ? `${player.age} anys` : 'Sense data')}
                   </span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
@@ -852,7 +854,7 @@ export const PlayerDetail: React.FC = () => {
                 {player.scraped_at && (
                   <div className="flex justify-between py-2 border-b border-slate-100">
                     <span className="text-slate-500 font-semibold">Darrera Sincro:</span>
-                    <span className="text-slate-700 font-semibold">{new Date(player.scraped_at).toLocaleDateString()}</span>
+                    <span className="text-slate-700 font-semibold">{formatAppDate(player.scraped_at)}</span>
                   </div>
                 )}
               </div>
@@ -1232,7 +1234,7 @@ export const PlayerDetail: React.FC = () => {
                   <div key={report.id} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
                     <div className="flex justify-between items-start">
                       <div>
-                        <span className="text-xs text-slate-500 font-semibold">{report.report_date}</span>
+                        <span className="text-xs text-slate-500 font-semibold">{formatAppDate(report.report_date)}</span>
                         <h4 className="text-sm font-black text-[#061338]">Informe de Seguiment Tècnic</h4>
                       </div>
                       <Badge variant="gold">{report.recommendation}</Badge>
@@ -1379,7 +1381,7 @@ export const PlayerDetail: React.FC = () => {
                               <img
                                 src={h.escudo_url}
                                 alt={h.equipo}
-                                className="w-8 h-8 mx-auto object-contain drop-shadow-sm"
+                                className="w-8 h-8 mx-auto object-contain bg-white rounded-lg p-1 border border-slate-200 shadow-sm"
                                 onError={(e) => {
                                   (e.target as HTMLElement).style.display = 'none';
                                 }}

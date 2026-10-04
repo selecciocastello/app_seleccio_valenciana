@@ -1,15 +1,16 @@
 import React from 'react';
 import { Card } from '../../components/ui/Card';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { formatAppDate } from '../../utils/dateFormatter';
 
 export const AdminLogs: React.FC = () => {
   const { t } = useLanguage();
 
   const mockLogs = [
-    { id: '1', date: '19/09/2026 11:41:02', user: 'Admin', action: 'LOGIN_SUCCESS', details: 'Accés correcte al sistema' },
-    { id: '2', date: '19/09/2026 11:35:10', user: 'Vicent Ribes', action: 'CREATE_CALLUP', details: 'Nova Convocatòria Sub-16' },
-    { id: '3', date: '19/09/2026 10:14:05', user: 'Vicent Ribes', action: 'UPDATE_PLAYER_STATUS', details: 'Jugador Marc Beltrán canviat a Seleccionat' },
-    { id: '4', date: '18/09/2026 18:20:00', user: 'System Scraping', action: 'SCRAPING_JOB_SUCCESS', details: '3 jugadors nous actualitzats' }
+    { id: '1', date: formatAppDate('2026-09-19', '11:41'), user: 'Admin', action: 'LOGIN_SUCCESS', details: 'Accés correcte al sistema' },
+    { id: '2', date: formatAppDate('2026-09-19', '11:35'), user: 'Vicent Ribes', action: 'CREATE_CALLUP', details: 'Nova Convocatòria Sub-16' },
+    { id: '3', date: formatAppDate('2026-09-19', '10:14'), user: 'Vicent Ribes', action: 'UPDATE_PLAYER_STATUS', details: 'Jugador Marc Beltrán canviat a Seleccionat' },
+    { id: '4', date: formatAppDate('2026-09-18', '18:20'), user: 'System Scraping', action: 'SCRAPING_JOB_SUCCESS', details: '3 jugadors nous actualitzats' }
   ];
 
   return (

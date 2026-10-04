@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { Profile, AppSettings } from '../types/models';
 import { supabase, isSupabaseConfigured } from '../config/supabaseClient';
+import { formatAppDate } from '../utils/dateFormatter';
 
 interface RegisterData {
   email: string;
@@ -38,7 +39,7 @@ const INITIAL_USERS: Profile[] = [
     role: { id: 'r1', name: 'admin', description: 'Administrador principal' },
     is_active: true,
     created_at: new Date().toISOString(),
-    last_login: new Date().toLocaleDateString('es-ES') + ' 16:45h'
+    last_login: formatAppDate(new Date(), '16:45')
   },
   {
     id: 'bb640183-cd48-47ce-aa4d-730becd6e747',
@@ -49,7 +50,7 @@ const INITIAL_USERS: Profile[] = [
     role: { id: 'r2', name: 'seleccionador', description: 'Seleccionador Infantil FFCV' },
     is_active: true,
     created_at: new Date().toISOString(),
-    last_login: new Date().toLocaleDateString('es-ES') + ' 10:15h'
+    last_login: formatAppDate(new Date(), '10:15')
   },
   {
     id: 'fea9aa09-c9fd-489f-9bf1-61c64c1b1bfe',
@@ -60,7 +61,7 @@ const INITIAL_USERS: Profile[] = [
     role: { id: 'r2', name: 'seleccionador', description: 'Seleccionador Cadet FFCV' },
     is_active: true,
     created_at: new Date().toISOString(),
-    last_login: new Date().toLocaleDateString('es-ES') + ' 09:30h'
+    last_login: formatAppDate(new Date(), '09:30')
   }
 ];
 
@@ -147,7 +148,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           },
           is_active: true,
           created_at: session.user.created_at || new Date().toISOString(),
-          last_login: new Date().toLocaleDateString('es-ES') + ' ' + new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+          last_login: formatAppDate(new Date())
         };
 
         setUser(activeProfile);
@@ -195,7 +196,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             },
             is_active: true,
             created_at: authData.user.created_at || new Date().toISOString(),
-            last_login: new Date().toLocaleDateString('es-ES') + ' ' + new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+            last_login: formatAppDate(new Date())
           };
 
           setUser(loggedUser);
@@ -222,7 +223,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (localMatch && localMatch.password === password) {
             const updatedUser: Profile = {
               ...localMatch,
-              last_login: new Date().toLocaleDateString('es-ES') + ' ' + new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+              last_login: formatAppDate(new Date())
             };
             setUser(updatedUser);
             localStorage.setItem('auth_user', JSON.stringify(updatedUser));
@@ -262,7 +263,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const updatedUser: Profile = {
       ...foundUser,
-      last_login: new Date().toLocaleDateString('es-ES') + ' ' + new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+      last_login: formatAppDate(new Date())
     };
 
     setUser(updatedUser);
@@ -328,7 +329,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       role: { id: 'r2', name: 'seleccionador', description: 'Seleccionador registrat' },
       is_active: true,
       created_at: new Date().toISOString(),
-      last_login: new Date().toLocaleDateString('es-ES') + ' ' + new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+      last_login: formatAppDate(new Date())
     };
 
     const newUsersList = [newUser, ...users.filter((u) => u.email.toLowerCase() !== emailTrim)];

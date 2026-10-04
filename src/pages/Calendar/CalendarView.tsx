@@ -19,15 +19,19 @@ import {
   Check,
   CalendarCheck,
   Shield,
-  LayoutGrid
+  LayoutGrid,
+  Eye
 } from 'lucide-react';
 import clsx from 'clsx';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { CustomSelect } from '../../components/ui/Select';
 import { useAppStore } from '../../hooks/useAppStore';
-import { useToast } from '../../contexts/ToastContext';
 import type { Match, Player } from '../../types/models';
+import { AgendaPickerModal } from '../../components/agenda/AgendaPickerModal';
+import { isMatchSchedulable } from '../../utils/agenda';
+import { formatAppDate, formatAppDateLong } from '../../utils/dateFormatter';
+import { formatCompetition } from '../../utils/competitionFormatter';
 
 const MONTH_NAMES_CA = [
   'Gener', 'Febrer', 'Març', 'Abril', 'Maig', 'Juny',
@@ -135,20 +139,18 @@ const getMatchesByLeague = (dayMatches: Match[]): LeagueSummary[] => {
   const map = new Map<string, LeagueSummary>();
   
   dayMatches.forEach((m) => {
-    const comp = m.competition_name || 'Lliga FFCV';
-    const grp = m.group_name || '';
-    const key = `${comp} - ${grp}`;
-    const existing = map.get(key);
+    const compLabel = formatCompetition(m.competition_name, m.group_name);
+    const existing = map.get(compLabel);
     if (existing) {
       existing.count += 1;
     } else {
-      map.set(key, {
-        key,
-        name: comp,
-        group: grp,
-        shortName: formatShortLeagueName(comp, grp),
+      map.set(compLabel, {
+        key: compLabel,
+        name: compLabel,
+        group: m.group_name || '',
+        shortName: formatShortLeagueName(m.competition_name, m.group_name),
         count: 1,
-        badgeStyle: getLeagueBadgeStyle(comp)
+        badgeStyle: getLeagueBadgeStyle(compLabel)
       });
     }
   });
@@ -158,14 +160,11 @@ const getMatchesByLeague = (dayMatches: Match[]): LeagueSummary[] => {
 
 export const CalendarView: React.FC = () => {
   const navigate = useNavigate();
-  const { showToast } = useToast();
   const {
     callups,
     trainings,
     matches,
     agenda,
-    addToAgenda,
-    removeFromAgenda,
     getTeamPlayersBreakdown
   } = useAppStore();
 
@@ -175,9 +174,9 @@ export const CalendarView: React.FC = () => {
   // Vista de partits: 'month' (Calendari Mensual) o 'jornada' (Llistat per Jornada)
   const [matchesViewMode, setMatchesViewMode] = useState<'month' | 'jornada'>('month');
 
-  // Navegació de dates del Calendari Mensual (Per defecte: Setembre 2026, inici de la temporada)
-  const [currentYear, setCurrentYear] = useState<number>(2026);
-  const [currentMonth, setCurrentMonth] = useState<number>(8); // 8 = Setembre (0-indexed)
+  // Navegació de dates del Calendari Mensual (per defecte: el mes actual)
+  const [currentYear, setCurrentYear] = useState<number>(() => new Date().getFullYear());
+  const [currentMonth, setCurrentMonth] = useState<number>(() => new Date().getMonth()); // 0-indexed
 
   // Filtres
   const [selectedComp, setSelectedComp] = useState<string>('all');
@@ -187,8 +186,8 @@ export const CalendarView: React.FC = () => {
   const [startTimeFilter, setStartTimeFilter] = useState<string>('all');
   const [endTimeFilter, setEndTimeFilter] = useState<string>('all');
 
-  // Seleccionador per defecte a qui assignar els partits a l'agenda
-  const [selectedTargetSelector, setSelectedTargetSelector] = useState<string>('Víctor Zandalinas');
+  // Partit per al qual s'està triant l'agenda del seleccionador
+  const [pickerMatch, setPickerMatch] = useState<Match | null>(null);
 
   // Modals
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
@@ -196,20 +195,16 @@ export const CalendarView: React.FC = () => {
   const [dayModalSearch, setDayModalSearch] = useState<string>('');
   const [dayModalLeague, setDayModalLeague] = useState<string>('all');
 
-  // Llista de seleccionadors disponibles per al selector (Només els existents: Víctor Zandalinas i Administrador FFCV Castelló)
-  const availableSelectors = useMemo(() => {
-    return ['Víctor Zandalinas', 'Administrador FFCV Castelló'];
-  }, []);
-
   // Competicions úniques disponibles en els partits
   const competitionsList = useMemo(() => {
     const set = new Set<string>();
     matches.forEach((m) => {
-      if (m.competition_name && m.group_name) {
-        set.add(`${m.competition_name} - ${m.group_name}`);
+      const compLabel = formatCompetition(m.competition_name, m.group_name);
+      if (compLabel) {
+        set.add(compLabel);
       }
     });
-    return Array.from(set);
+    return Array.from(set).sort();
   }, [matches]);
 
   // Llista de jornades disponibles ordenades numèricament
@@ -240,15 +235,9 @@ export const CalendarView: React.FC = () => {
     return rawTime;
   }, []);
 
-  // Format net de data (elimina T00:00:00... i retorna DD/MM/YYYY)
+  // Format net de data (dia de la setmana i DD-MM-YYYY)
   const formatCleanMatchDate = useCallback((dateStr?: string): string => {
-    if (!dateStr) return 'Data per confirmar';
-    const clean = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
-    const parts = clean.split('-');
-    if (parts.length === 3) {
-      return `${parts[2]}/${parts[1]}/${parts[0]}`;
-    }
-    return clean;
+    return formatAppDate(dateStr, null);
   }, []);
 
   // Comprovar si un partit està a l'agenda
@@ -259,28 +248,29 @@ export const CalendarView: React.FC = () => {
     [agenda]
   );
 
-  // Alternar partit a l'agenda
-  const handleToggleAgenda = useCallback(
-    (e: React.MouseEvent, match: Match, customSelector?: string) => {
-      e.stopPropagation();
-      const existing = getMatchAgendaItem(match.id);
-      const targetSelector = customSelector || selectedTargetSelector;
-
-      if (existing) {
-        removeFromAgenda(existing.id);
-        showToast(`Partit eliminat de l'agenda`, 'info');
-      } else {
-        addToAgenda(match, targetSelector);
-        showToast(`Partit afegit a l'agenda de ${targetSelector}`, 'success');
-      }
-    },
-    [getMatchAgendaItem, selectedTargetSelector, addToAgenda, removeFromAgenda, showToast]
+  // Seleccionadors que tenen el partit a la seua agenda
+  const getMatchSelectorNames = useCallback(
+    (matchId: string) => agenda.filter((a) => a.match_id === matchId).map((a) => a.selector_name).join(', '),
+    [agenda]
   );
+
+  // Seleccionadors que han marcat el partit com a observat a la seua agenda
+  const getMatchObservers = useCallback(
+    (matchId: string) =>
+      agenda.filter((a) => a.match_id === matchId && a.status === 'Observat').map((a) => a.selector_name).join(', '),
+    [agenda]
+  );
+
+  // Obrir el selector d'agenda: es tria de quin seleccionador és (o de diversos)
+  const handleToggleAgenda = useCallback((e: React.MouseEvent, match: Match) => {
+    e.stopPropagation();
+    setPickerMatch(match);
+  }, []);
 
   // Filtrado de partits
   const filteredMatches = useMemo(() => {
     return matches.filter((m) => {
-      const compKey = `${m.competition_name} - ${m.group_name}`;
+      const compKey = formatCompetition(m.competition_name, m.group_name);
       const matchesComp = selectedComp === 'all' || compKey === selectedComp;
       const matchesJornada =
         matchesViewMode === 'month' || selectedJornada === 'all' || m.matchday === selectedJornada;
@@ -418,7 +408,7 @@ export const CalendarView: React.FC = () => {
     if (!selectedDayDate) return [];
     let list = rawDayMatches;
     if (dayModalLeague !== 'all') {
-      list = list.filter((m) => `${m.competition_name || 'Lliga FFCV'} - ${m.group_name || ''}` === dayModalLeague);
+      list = list.filter((m) => formatCompetition(m.competition_name, m.group_name) === dayModalLeague);
     }
     if (!dayModalSearch.trim()) return list;
     const q = dayModalSearch.toLowerCase().trim();
@@ -472,38 +462,14 @@ export const CalendarView: React.FC = () => {
     };
   }, [selectedMatch, getTeamPlayersBreakdown]);
 
-  // Format amigable de data
+  // Format amigable de data amb dia de la setmana
   const formatMatchDateLong = (dateStr?: string) => {
-    if (!dateStr) return 'Data per confirmar';
-    try {
-      const cleanDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
-      const parts = cleanDate.split('-');
-      if (parts.length === 3) {
-        const year = parseInt(parts[0], 10);
-        const month = parseInt(parts[1], 10) - 1;
-        const day = parseInt(parts[2], 10);
-        const date = new Date(year, month, day);
-        return date.toLocaleDateString('ca-ES', {
-          weekday: 'long',
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric'
-        });
-      }
-      const date = new Date(dateStr);
-      return date.toLocaleDateString('ca-ES', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
-    } catch {
-      return dateStr;
-    }
+    return formatAppDateLong(dateStr, null);
   };
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <AgendaPickerModal match={pickerMatch} onClose={() => setPickerMatch(null)} />
       {/* ── HEADER PRINCIPAL ─────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -647,21 +613,6 @@ export const CalendarView: React.FC = () => {
               )}
 
               {/* Selector de Seleccionador destí per a l'agenda */}
-              <div className="sm:col-span-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950/70 border border-slate-800 rounded-xl px-3.5 py-2">
-                <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
-                  <CalendarCheck className="w-4 h-4 text-[#ff6600] shrink-0" />
-                  <span className="truncate">Afegir partits a l'agenda de:</span>
-                </div>
-                <div className="w-full sm:w-52">
-                  <CustomSelect
-                    theme="dark"
-                    size="sm"
-                    value={selectedTargetSelector}
-                    onChange={setSelectedTargetSelector}
-                    options={availableSelectors.map((s) => ({ value: s, label: s }))}
-                  />
-                </div>
-              </div>
             </div>
 
             {/* Filtre per Franja Horària (De quina hora a quina hora) */}
@@ -1047,7 +998,7 @@ export const CalendarView: React.FC = () => {
                                     <div className="flex items-center justify-between gap-1 text-[9px]">
                                       <span className="text-sky-400 font-extrabold truncate flex items-center gap-1">
                                         <Trophy className="w-2.5 h-2.5 shrink-0" />
-                                        <span>{m.competition_name || 'Lliga FFCV'}{m.group_name ? ` · ${m.group_name}` : ''}</span>
+                                        <span>{formatCompetition(m.competition_name, m.group_name)}</span>
                                       </span>
                                       <span className="text-white font-black bg-slate-950 px-1 py-0.2 rounded">
                                         🕒 {matchTime}
@@ -1060,7 +1011,7 @@ export const CalendarView: React.FC = () => {
                                         <img
                                           src={m.home_crest || 'https://appwebffcv.novanet.es/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201211/14/12043583.jpg'}
                                           alt=""
-                                          className="w-3 h-3 object-contain shrink-0"
+                                          className="w-3.5 h-3.5 object-contain shrink-0 bg-white rounded p-0.5 border border-slate-200"
                                           onError={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
                                         />
                                         <span className="truncate text-white font-bold text-[10px]">{m.home_team_name}</span>
@@ -1076,7 +1027,7 @@ export const CalendarView: React.FC = () => {
                                         <img
                                           src={m.away_crest || 'https://appwebffcv.novanet.es/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201306/21/12080863.jpg'}
                                           alt=""
-                                          className="w-3 h-3 object-contain shrink-0"
+                                          className="w-3.5 h-3.5 object-contain shrink-0 bg-white rounded p-0.5 border border-slate-200"
                                           onError={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
                                         />
                                         <span className="truncate text-slate-300 font-bold text-[10px]">{m.away_team_name}</span>
@@ -1136,7 +1087,7 @@ export const CalendarView: React.FC = () => {
                         <div className="flex items-center justify-between px-2 text-[11px] text-slate-400 font-bold">
                           <span className="flex items-center gap-1.5 text-sky-400">
                             <Trophy className="w-3 h-3" />
-                            <span>{m.competition_name} • {m.group_name}</span>
+                            <span>{formatCompetition(m.competition_name, m.group_name)}</span>
                           </span>
                           <div className="flex items-center gap-2">
                             <span className="text-slate-300 font-bold">{formatCleanMatchDate(m.match_date)}</span>
@@ -1244,28 +1195,45 @@ export const CalendarView: React.FC = () => {
                               <span>{matchTime}</span>
                             </div>
 
-                            <button
-                              type="button"
-                              onClick={(e) => handleToggleAgenda(e, m)}
-                              className={clsx(
-                                "px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-black flex items-center gap-1 sm:gap-1.5 transition-all shadow-sm shrink-0",
-                                inAgenda
-                                  ? "bg-emerald-600 text-white hover:bg-rose-600"
-                                  : "bg-[#ff6600] hover:bg-orange-600 text-white"
-                              )}
-                            >
-                              {inAgenda ? (
-                                <>
-                                  <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                                  <span>En Agenda</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                                  <span>+ Agenda</span>
-                                </>
-                              )}
-                            </button>
+                            {isMatchSchedulable(m) ? (
+                              <button
+                                type="button"
+                                onClick={(e) => handleToggleAgenda(e, m)}
+                                className={clsx(
+                                  "px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-black flex items-center gap-1 sm:gap-1.5 transition-all shadow-sm shrink-0",
+                                  inAgenda
+                                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                                    : "bg-[#ff6600] hover:bg-orange-600 text-white"
+                                )}
+                              >
+                                {inAgenda ? (
+                                  <>
+                                    <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                                    <span>En Agenda</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                                    <span>+ Agenda</span>
+                                  </>
+                                )}
+                              </button>
+                            ) : (
+                              <span
+                                className={clsx(
+                                  "px-2.5 py-1 rounded-lg text-[11px] font-black inline-flex items-center gap-1 border shrink-0",
+                                  getMatchObservers(m.id)
+                                    ? "bg-emerald-950 text-emerald-300 border-emerald-800"
+                                    : "bg-slate-800 text-slate-400 border-slate-700"
+                                )}
+                              >
+                                {getMatchObservers(m.id) ? (
+                                  <><Eye className="w-3 h-3 shrink-0" /> Observat per {getMatchObservers(m.id)}</>
+                                ) : (
+                                  'Partit jugat'
+                                )}
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -1357,20 +1325,6 @@ export const CalendarView: React.FC = () => {
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-300 whitespace-nowrap">
-                  Agenda per a:
-                </span>
-                <div className="w-48 sm:w-56">
-                  <CustomSelect
-                    theme="dark"
-                    size="sm"
-                    value={selectedTargetSelector}
-                    onChange={setSelectedTargetSelector}
-                    options={availableSelectors.map((s) => ({ value: s, label: s }))}
-                  />
-                </div>
-              </div>
             </div>
 
             {/* Barra de Filtre per Lligues del dia */}
@@ -1434,7 +1388,7 @@ export const CalendarView: React.FC = () => {
                         <div className="flex items-center gap-2">
                           <span className="bg-sky-500/10 text-sky-300 border border-sky-500/20 px-2.5 py-1 rounded-lg text-xs font-black uppercase flex items-center gap-1.5">
                             <Trophy className="w-3.5 h-3.5 text-sky-400" />
-                            <span>{m.competition_name || 'Lliga FFCV'}{m.group_name ? ` · ${m.group_name}` : ''}</span>
+                            <span>{formatCompetition(m.competition_name, m.group_name)}</span>
                           </span>
                           <span className="text-xs font-bold text-slate-400">
                             {m.matchday || 'Partit oficial'}
@@ -1450,28 +1404,45 @@ export const CalendarView: React.FC = () => {
                             <span>{matchTime} h</span>
                           </span>
 
-                          <button
-                            type="button"
-                            onClick={(e) => handleToggleAgenda(e, m)}
-                            className={clsx(
-                              "px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-md",
-                              inAgenda
-                                ? "bg-emerald-600 hover:bg-rose-600 text-white"
-                                : "bg-[#ff6600] hover:bg-orange-600 text-white"
-                            )}
-                          >
-                            {inAgenda ? (
-                              <>
-                                <Check className="w-3.5 h-3.5" />
-                                <span>A l'Agenda ({getMatchAgendaItem(m.id)?.selector_name})</span>
-                              </>
-                            ) : (
-                              <>
-                                <Plus className="w-3.5 h-3.5" />
-                                <span>+ Afegir a l'Agenda</span>
-                              </>
-                            )}
-                          </button>
+                          {isMatchSchedulable(m) ? (
+                            <button
+                              type="button"
+                              onClick={(e) => handleToggleAgenda(e, m)}
+                              className={clsx(
+                                "px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-md",
+                                inAgenda
+                                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                                  : "bg-[#ff6600] hover:bg-orange-600 text-white"
+                              )}
+                            >
+                              {inAgenda ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>A l'Agenda ({getMatchSelectorNames(m.id)})</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>+ Afegir a l'Agenda</span>
+                                </>
+                              )}
+                            </button>
+                          ) : (
+                            <span
+                              className={clsx(
+                                "px-2.5 py-1 rounded-lg text-[11px] font-black inline-flex items-center gap-1 border shrink-0",
+                                getMatchObservers(m.id)
+                                  ? "bg-emerald-950 text-emerald-300 border-emerald-800"
+                                  : "bg-slate-800 text-slate-400 border-slate-700"
+                              )}
+                            >
+                              {getMatchObservers(m.id) ? (
+                                <><Eye className="w-3 h-3 shrink-0" /> Observat per {getMatchObservers(m.id)}</>
+                              ) : (
+                                'Partit jugat'
+                              )}
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -1483,7 +1454,7 @@ export const CalendarView: React.FC = () => {
                             <img
                               src={m.home_crest || 'https://appwebffcv.novanet.es/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201211/14/12043583.jpg'}
                               alt={m.home_team_name}
-                              className="w-8 h-8 object-contain rounded-lg bg-white/5 p-1 shrink-0"
+                              className="w-8 h-8 object-contain rounded-lg bg-white border border-slate-200 p-1 shrink-0 shadow-sm"
                             />
                             <div className="min-w-0 flex-1">
                               <h4 className="text-xs sm:text-sm font-black text-white break-words">{m.home_team_name}</h4>
@@ -1508,7 +1479,7 @@ export const CalendarView: React.FC = () => {
                             <img
                               src={m.away_crest || 'https://appwebffcv.novanet.es/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201306/21/12080863.jpg'}
                               alt={m.away_team_name}
-                              className="w-8 h-8 object-contain rounded-lg bg-white/5 p-1 shrink-0"
+                              className="w-8 h-8 object-contain rounded-lg bg-white border border-slate-200 p-1 shrink-0 shadow-sm"
                             />
                             <div className="min-w-0 flex-1">
                               <h4 className="text-xs sm:text-sm font-black text-white break-words">{m.away_team_name}</h4>
@@ -1574,7 +1545,7 @@ export const CalendarView: React.FC = () => {
                   {selectedMatch.matchday || 'Partit FFCV'}
                 </span>
                 <span className="text-xs font-bold text-slate-300">
-                  {selectedMatch.competition_name} • {selectedMatch.group_name}
+                  {formatCompetition(selectedMatch.competition_name, selectedMatch.group_name)}
                 </span>
               </div>
               <button
@@ -1592,7 +1563,7 @@ export const CalendarView: React.FC = () => {
                 <div className="grid grid-cols-12 items-center gap-2 sm:gap-4">
                   {/* Local */}
                   <div className="col-span-5 flex flex-col items-center text-center space-y-2 min-w-0">
-                    <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-slate-900/90 border border-slate-800 p-1.5 sm:p-2 flex items-center justify-center shadow-lg">
+                    <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-white border border-slate-200 p-1.5 sm:p-2 flex items-center justify-center shadow-md">
                       <img
                         src={selectedMatch.home_crest || 'https://appwebffcv.novanet.es/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201211/14/12043583.jpg'}
                         alt={selectedMatch.home_team_name || 'Local'}
@@ -1636,7 +1607,7 @@ export const CalendarView: React.FC = () => {
 
                   {/* Visitant */}
                   <div className="col-span-5 flex flex-col items-center text-center space-y-2 min-w-0">
-                    <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-slate-900/90 border border-slate-800 p-1.5 sm:p-2 flex items-center justify-center shadow-lg">
+                    <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-white border border-slate-200 p-1.5 sm:p-2 flex items-center justify-center shadow-md">
                       <img
                         src={selectedMatch.away_crest || 'https://appwebffcv.novanet.es/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201306/21/12080863.jpg'}
                         alt={selectedMatch.away_team_name || 'Visitant'}
@@ -1673,35 +1644,56 @@ export const CalendarView: React.FC = () => {
                       Agenda de Seguiment del Seleccionador
                     </h4>
                     <p className="text-xs text-slate-400">
-                      {getMatchAgendaItem(selectedMatch.id)
-                        ? `Aquest partit està a l'agenda de ${getMatchAgendaItem(selectedMatch.id)?.selector_name}`
+                      {!isMatchSchedulable(selectedMatch)
+                        ? getMatchObservers(selectedMatch.id)
+                          ? `Partit observat per ${getMatchObservers(selectedMatch.id)}`
+                          : "Aquest partit ja s'ha jugat"
+                        : getMatchAgendaItem(selectedMatch.id)
+                        ? `Aquest partit està a l'agenda de ${getMatchSelectorNames(selectedMatch.id)}`
                         : "Planifica l'observació d'aquest partit per als tècnics de la FFCV"}
                     </p>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={(e) => handleToggleAgenda(e, selectedMatch)}
-                  className={clsx(
-                    "px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all shadow-md w-full sm:w-auto justify-center",
-                    getMatchAgendaItem(selectedMatch.id)
-                      ? "bg-emerald-600 hover:bg-rose-600 text-white"
-                      : "bg-[#ff6600] hover:bg-orange-600 text-white"
-                  )}
-                >
-                  {getMatchAgendaItem(selectedMatch.id) ? (
-                    <>
-                      <Check className="w-4 h-4" />
-                      <span>En l'Agenda (Clic per treure)</span>
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="w-4 h-4" />
-                      <span>Afegir a l'Agenda ({selectedTargetSelector})</span>
-                    </>
-                  )}
-                </button>
+                {isMatchSchedulable(selectedMatch) ? (
+                  <button
+                    type="button"
+                    onClick={(e) => handleToggleAgenda(e, selectedMatch)}
+                    className={clsx(
+                      "px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all shadow-md w-full sm:w-auto justify-center",
+                      getMatchAgendaItem(selectedMatch.id)
+                        ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                        : "bg-[#ff6600] hover:bg-orange-600 text-white"
+                    )}
+                  >
+                    {getMatchAgendaItem(selectedMatch.id) ? (
+                      <>
+                        <Check className="w-4 h-4" />
+                        <span>En l'Agenda (Canviar)</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-4 h-4" />
+                        <span>Afegir a l'Agenda</span>
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <span
+                    className={clsx(
+                      "px-2.5 py-1 rounded-lg text-[11px] font-black inline-flex items-center gap-1 border shrink-0",
+                      getMatchObservers(selectedMatch.id)
+                        ? "bg-emerald-950 text-emerald-300 border-emerald-800"
+                        : "bg-slate-800 text-slate-400 border-slate-700"
+                    )}
+                  >
+                    {getMatchObservers(selectedMatch.id) ? (
+                      <><Eye className="w-3 h-3 shrink-0" /> Observat per {getMatchObservers(selectedMatch.id)}</>
+                    ) : (
+                      'Partit jugat'
+                    )}
+                  </span>
+                )}
               </div>
 
               {/* Bloque Dades del Partit i Designació CTAFFCV */}
@@ -1939,7 +1931,7 @@ export const CalendarView: React.FC = () => {
                 <div className="text-left sm:text-right shrink-0">
                   <Badge status={c.status} />
                   <p className="text-xs font-semibold text-slate-400 mt-1">
-                    {new Date(c.date).toLocaleDateString('ca-ES')}
+                    {formatAppDate(c.date)}
                   </p>
                 </div>
               </div>
@@ -1963,7 +1955,7 @@ export const CalendarView: React.FC = () => {
                 <div className="text-left sm:text-right shrink-0">
                   <Badge variant="success">Programat</Badge>
                   <p className="text-xs font-semibold text-slate-400 mt-1">
-                    {new Date(t.start_time).toLocaleDateString('ca-ES')}
+                    {formatAppDate(t.start_time)}
                   </p>
                 </div>
               </div>

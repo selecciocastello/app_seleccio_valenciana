@@ -6,6 +6,7 @@ import { Modal } from '../../components/ui/Modal';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAppStore } from '../../hooks/useAppStore';
 import { useToast } from '../../contexts/ToastContext';
+import { formatAppDateLong } from '../../utils/dateFormatter';
 
 export const Training: React.FC = () => {
   const { t } = useLanguage();
@@ -95,7 +96,7 @@ export const Training: React.FC = () => {
                     <h3 className="text-lg font-black text-[#061338] mt-2">{session.title}</h3>
                   <p className="text-xs text-slate-500 font-semibold flex items-center gap-1.5 mt-1">
                     <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-                    {new Date(session.start_time).toLocaleDateString('ca-ES')} • 18:00h - 20:00h
+                    {formatAppDateLong(session.start_time)} • 18:00h - 20:00h
                   </p>
                 </div>
               </div>

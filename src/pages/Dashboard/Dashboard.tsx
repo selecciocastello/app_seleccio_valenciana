@@ -13,6 +13,7 @@ import { Link } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { useAppStore } from '../../hooks/useAppStore';
+import { formatAppDate } from '../../utils/dateFormatter';
 
 export const Dashboard: React.FC = () => {
   const { players, callups, trainings } = useAppStore();
@@ -83,7 +84,7 @@ export const Dashboard: React.FC = () => {
         {/* Grid de Cards de Equipos y Jugadores estilo FFCV */}
         {(() => {
           const activeObserved = players.filter(
-            (p) => p.status === 'Observado' || p.status === 'Preseleccionado' || p.status === 'Seleccionado'
+            (p) => p.status === 'Observado' || p.status === 'Interesante' || p.status === 'Preseleccionado' || p.status === 'Seleccionado'
           );
 
           if (activeObserved.length === 0) {
@@ -199,7 +200,7 @@ export const Dashboard: React.FC = () => {
                     <div className="text-right">
                       <Badge status={nextCallup.status} />
                       <p className="text-xs font-bold text-slate-700 mt-1">
-                        {new Date(nextCallup.date).toLocaleDateString('ca-ES')}
+                        {formatAppDate(nextCallup.date)}
                       </p>
                     </div>
                   </div>
@@ -213,7 +214,7 @@ export const Dashboard: React.FC = () => {
                       </div>
                       <div>
                         <span className="text-[10px] font-black text-sky-600 uppercase tracking-wider block">
-                          ENTRENAMENT TÀCTIC
+                           ENTRENAMENT TÀCTIC
                         </span>
                         <h4 className="text-sm font-black text-slate-900">{nextTraining.title}</h4>
                         <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
@@ -224,7 +225,7 @@ export const Dashboard: React.FC = () => {
                     <div className="text-right">
                       <Badge variant="success">Programat</Badge>
                       <p className="text-xs font-bold text-slate-700 mt-1">
-                        {new Date(nextTraining.start_time).toLocaleDateString('ca-ES')}
+                        {formatAppDate(nextTraining.start_time)}
                       </p>
                     </div>
                   </div>

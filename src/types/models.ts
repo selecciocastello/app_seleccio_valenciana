@@ -34,6 +34,7 @@ export interface AppSettings {
 export type PlayerStatus = 
   | 'Candidato'
   | 'Observado'
+  | 'Interesante'
   | 'Preseleccionado'
   | 'Seleccionado'
   | 'No seleccionado'
@@ -167,7 +168,7 @@ export interface Player {
   updated_at?: string;
 }
 
-export type MatchStatus = 'Programado' | 'En Curso' | 'Finalizado' | 'Suspendido';
+export type MatchStatus = 'Programado' | 'En Curso' | 'Jugado' | 'Finalizado' | 'Suspendido';
 
 export interface Match {
   id: string;
@@ -352,5 +353,8 @@ export interface ScoutingAgendaItem {
   standout_players?: string[];
   created_at: string;
   updated_at?: string;
+  lineup_processed_at?: string; // Acta processada (scripts/process_observed_matches.cjs)
+  played_player_ids?: string[]; // Ids FFCV dels jugadors que van jugar als equips observats
+  synced?: boolean; // Només local: ja s'ha guardat a Supabase
 }
 

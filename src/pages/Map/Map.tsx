@@ -3,10 +3,14 @@ import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { CustomSelect } from '../../components/ui/Select';
 import { useAppStore } from '../../hooks/useAppStore';
-import { useAuth } from '../../contexts/AuthContext';
+import { AgendaPickerModal } from '../../components/agenda/AgendaPickerModal';
+import type { Match } from '../../types/models';
 import { Users, CalendarDays, Check, MapPinned, Route, Plus, X } from 'lucide-react';
 import L from 'leaflet';
 import { isTodayOrFuture } from '../../utils/dateFilters';
+import { isMatchSchedulable } from '../../utils/agenda';
+import { formatMatchDateTime, formatAppDateLong } from '../../utils/dateFormatter';
+import { formatCompetition } from '../../utils/competitionFormatter';
 
 // Distància en línia recta entre dos punts (fórmula de Haversine), en km
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -26,13 +30,11 @@ function timeToMinutes(t: string) {
 }
 
 export const MatchMap: React.FC = () => {
-  const { matches, agenda, addToAgenda, getTeamPlayersBreakdown } = useAppStore();
-  const { user } = useAuth();
-  const currentSelectorName = user?.full_name || 'Seleccionador';
+  const { matches, agenda, getTeamPlayersBreakdown } = useAppStore();
+  const [pickerMatch, setPickerMatch] = useState<Match | null>(null);
 
   const [selectedTeamId, setSelectedTeamId] = useState<string>('all');
   const [selectedDay, setSelectedDay] = useState<string>('');
-  const [toast, setToast] = useState<string | null>(null);
 
   // --- Planificació per proximitat ---
   const [planFrom, setPlanFrom] = useState('09:00');
@@ -109,7 +111,7 @@ export const MatchMap: React.FC = () => {
     const maxKm = planMaxKm ? parseFloat(planMaxKm) : null;
 
     return filteredMatches
-      .filter((m) => m.latitude && m.longitude)
+      .filter((m) => m.latitude && m.longitude && isMatchSchedulable(m))
       .map((m) => ({
         match: m,
         distanceKm: haversineKm(planOrigin.lat, planOrigin.lng, m.latitude as number, m.longitude as number)
@@ -126,13 +128,8 @@ export const MatchMap: React.FC = () => {
       .sort((a, b) => a.distanceKm - b.distanceKm);
   }, [filteredMatches, planOrigin, planFrom, planTo, planMaxKm]);
 
-  const isInAgenda = (matchId: string) => agenda.some((a) => a.match_id === matchId);
-
-  const handleAcceptPlanMatch = (match: (typeof matches)[number]) => {
-    addToAgenda(match, currentSelectorName);
-    setToast(`Afegit a l'agenda: ${match.home_team_name || match.home_team?.name} vs ${match.away_team_name || match.away_team?.name}`);
-    setTimeout(() => setToast(null), 3000);
-  };
+  const agendaSelectorNames = (matchId: string) =>
+    agenda.filter((a) => a.match_id === matchId).map((a) => a.selector_name).join(', ');
 
   useEffect(() => {
     // Inicializar mapa de Leaflet
@@ -208,14 +205,14 @@ export const MatchMap: React.FC = () => {
             ? `<span style="position:absolute; ${style} background:${color}; color:#fff; font-size:8px; font-weight:900; min-width:13px; height:13px; padding:0 2px; border-radius:999px; display:flex; align-items:center; justify-content:center; border:1.5px solid #fff; line-height:1; box-shadow:0 1.5px 3px rgba(0,0,0,0.5); z-index:10;">${count}</span>`
             : '';
         return `
-          <div style="position:relative; width:32px; height:32px; flex-shrink:0; display:flex; align-items:center; justify-content:center;">
+          <div style="position:relative; width:34px; height:34px; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#ffffff; border-radius:8px; border:1.5px solid #cbd5e1; padding:2px; box-shadow:0 2px 8px rgba(0,0,0,0.35);">
             ${
               crestUrl
-                ? `<img src="${crestUrl}" alt="" style="width:32px; height:32px; object-fit:contain; filter:drop-shadow(0 2px 5px rgba(0,0,0,0.6)); background:transparent;" onerror="this.style.display='none'" />`
-                : `<span style="font-size:16px; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.5));">⚽</span>`
+                ? `<img src="${crestUrl}" alt="" style="width:100%; height:100%; object-fit:contain;" onerror="this.style.display='none'" />`
+                : `<span style="font-size:16px;">⚽</span>`
             }
-            ${badge(breakdown.secondYear, '#dc2626', 'top:-4px; right:-4px;')}
-            ${badge(breakdown.firstYear, '#16a34a', 'bottom:-4px; right:-4px;')}
+            ${badge(breakdown.secondYear, '#dc2626', 'top:-5px; right:-5px;')}
+            ${badge(breakdown.firstYear, '#16a34a', 'bottom:-5px; right:-5px;')}
           </div>
         `;
       };
@@ -283,12 +280,8 @@ export const MatchMap: React.FC = () => {
       matchesAtLocation.forEach((match, idx) => {
         const homeCrest = match.home_crest || match.home_team?.crest_url;
         const awayCrest = match.away_crest || match.away_team?.crest_url;
-        const league = `${match.competition_name || 'Lliga FFCV'}${match.group_name ? ` · ${match.group_name}` : ''}`;
-        const time = getMatchTime(match);
-        const dateLabel = new Date(match.match_date).toLocaleDateString('ca-ES', {
-          day: '2-digit',
-          month: '2-digit'
-        });
+        const league = formatCompetition(match.competition_name || match.home_team?.competition, match.group_name || match.home_team?.group);
+        const dateLabel = formatMatchDateTime(match, { longWeekday: true });
 
         const row = document.createElement('div');
         row.style.cssText = `padding:7px 0; ${idx < matchesAtLocation.length - 1 ? 'border-bottom:1px solid #e2e8f0;' : ''}`;
@@ -296,9 +289,9 @@ export const MatchMap: React.FC = () => {
         const teamsRow = document.createElement('div');
         teamsRow.style.cssText = 'display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:4px;';
         teamsRow.innerHTML = `
-          ${homeCrest ? `<img src="${homeCrest}" style="width:26px;height:26px;object-fit:contain;" />` : ''}
+          ${homeCrest ? `<div style="width:26px;height:26px;background:#ffffff;border-radius:6px;border:1px solid #cbd5e1;display:flex;align-items:center;justify-content:center;padding:1.5px;flex-shrink:0;"><img src="${homeCrest}" style="width:100%;height:100%;object-fit:contain;" /></div>` : ''}
           <b style="color:#0f172a; font-size:11.5px; text-align:center;">${match.home_team_name || match.home_team?.name} vs ${match.away_team_name || match.away_team?.name}</b>
-          ${awayCrest ? `<img src="${awayCrest}" style="width:26px;height:26px;object-fit:contain;" />` : ''}
+          ${awayCrest ? `<div style="width:26px;height:26px;background:#ffffff;border-radius:6px;border:1px solid #cbd5e1;display:flex;align-items:center;justify-content:center;padding:1.5px;flex-shrink:0;"><img src="${awayCrest}" style="width:100%;height:100%;object-fit:contain;" /></div>` : ''}
         `;
         row.appendChild(teamsRow);
 
@@ -309,32 +302,31 @@ export const MatchMap: React.FC = () => {
 
         const dateEl = document.createElement('div');
         dateEl.style.cssText = 'text-align:center; font-size:11px; color:#059669; font-weight:bold; margin-top:2px;';
-        dateEl.textContent = `📅 ${dateLabel}${time ? ` · 🕐 ${time}h` : ''}`;
+        dateEl.textContent = `📅 ${dateLabel}`;
         row.appendChild(dateEl);
 
         const actionWrap = document.createElement('div');
         actionWrap.style.cssText = 'margin-top:6px; text-align:center;';
 
-        const already = agenda.some((a) => a.match_id === match.id);
-        if (already) {
-          const doneEl = document.createElement('span');
-          doneEl.style.cssText = 'display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:800; color:#059669;';
-          doneEl.textContent = '✓ A l\'agenda del seleccionador';
-          actionWrap.appendChild(doneEl);
-        } else {
-          const btn = document.createElement('button');
-          btn.textContent = '+ Afegir a l\'agenda del seleccionador';
-          btn.style.cssText = 'background:#ff6600; color:#fff; border:none; border-radius:8px; padding:5px 10px; font-size:10.5px; font-weight:800; cursor:pointer;';
-          btn.onclick = () => {
-            addToAgenda(match, currentSelectorName);
-            setToast(`Afegit a l'agenda: ${match.home_team_name || match.home_team?.name} vs ${match.away_team_name || match.away_team?.name}`);
-            setTimeout(() => setToast(null), 3000);
-            btn.disabled = true;
-            btn.textContent = '✓ Afegit';
-            btn.style.background = '#059669';
-          };
-          actionWrap.appendChild(btn);
+        const addedTo = agendaSelectorNames(match.id);
+        if (!isMatchSchedulable(match)) {
+          const observers = agenda
+            .filter((a) => a.match_id === match.id && a.status === 'Observat')
+            .map((a) => a.selector_name)
+            .join(', ');
+          const playedEl = document.createElement('span');
+          playedEl.style.cssText = `font-size:10.5px; font-weight:800; color:${observers ? '#059669' : '#64748b'};`;
+          playedEl.textContent = observers ? `👁 Observat per ${observers}` : 'Partit jugat';
+          actionWrap.appendChild(playedEl);
+          row.appendChild(actionWrap);
+          popupEl.appendChild(row);
+          return;
         }
+        const btn = document.createElement('button');
+        btn.textContent = addedTo ? `✓ A l'agenda de ${addedTo} · Canviar` : '+ Afegir a l\'agenda';
+        btn.style.cssText = `background:${addedTo ? '#059669' : '#ff6600'}; color:#fff; border:none; border-radius:8px; padding:5px 10px; font-size:10.5px; font-weight:800; cursor:pointer;`;
+        btn.onclick = () => setPickerMatch(match);
+        actionWrap.appendChild(btn);
         row.appendChild(actionWrap);
 
         popupEl.appendChild(row);
@@ -351,17 +343,11 @@ export const MatchMap: React.FC = () => {
       viewRef.current = { center: [map.getCenter().lat, map.getCenter().lng], zoom: map.getZoom() };
       map.remove();
     };
-  }, [filteredMatches, agenda, addToAgenda, currentSelectorName, getTeamPlayersBreakdown, planOrigin, planMaxKm]);
+  }, [filteredMatches, agenda, getTeamPlayersBreakdown, planOrigin, planMaxKm]);
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Toast */}
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2.5 animate-bounce">
-          <Check className="w-5 h-5 shrink-0" />
-          <span className="text-xs font-bold">{toast}</span>
-        </div>
-      )}
+      <AgendaPickerModal match={pickerMatch} onClose={() => setPickerMatch(null)} />
 
       {/* Header */}
       <div>
@@ -418,12 +404,7 @@ export const MatchMap: React.FC = () => {
                 onChange={setSelectedDay}
                 options={availableDays.map((d) => ({
                   value: d,
-                  label: new Date(d).toLocaleDateString('ca-ES', {
-                    weekday: 'long',
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric',
-                  }),
+                  label: formatAppDateLong(d, null),
                 }))}
               />
             </div>
@@ -542,13 +523,13 @@ export const MatchMap: React.FC = () => {
                 {planResults.map(({ match, distanceKm }) => {
                   const homeCrest = match.home_crest || match.home_team?.crest_url;
                   const awayCrest = match.away_crest || match.away_team?.crest_url;
-                  const added = isInAgenda(match.id);
+                  const addedTo = agendaSelectorNames(match.id);
                   const time = getMatchTime(match);
 
                   return (
                     <div key={match.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                       <div className="flex items-center justify-between">
-                        <Badge variant="info">{match.competition_name || 'Lliga FFCV'}{match.group_name ? ` · ${match.group_name}` : ''}</Badge>
+                        <Badge variant="info">{formatCompetition(match.competition_name || match.home_team?.competition, match.group_name || match.home_team?.group)}</Badge>
                         <span className="text-[10px] font-black text-[#ff6600] bg-orange-100 px-2 py-0.5 rounded-full">
                           {distanceKm.toFixed(1)} km
                         </span>
@@ -556,7 +537,7 @@ export const MatchMap: React.FC = () => {
 
                       <div className="flex items-center justify-center gap-2">
                         {homeCrest ? (
-                          <img src={homeCrest} alt="" className="w-6 h-6 object-contain shrink-0" />
+                          <img src={homeCrest} alt="" className="w-6 h-6 object-contain shrink-0 bg-white rounded p-0.5 border border-slate-200" />
                         ) : (
                           <div className="w-6 h-6 rounded-full bg-slate-200 shrink-0" />
                         )}
@@ -564,7 +545,7 @@ export const MatchMap: React.FC = () => {
                           {match.home_team_name || match.home_team?.name} vs {match.away_team_name || match.away_team?.name}
                         </h4>
                         {awayCrest ? (
-                          <img src={awayCrest} alt="" className="w-6 h-6 object-contain shrink-0" />
+                          <img src={awayCrest} alt="" className="w-6 h-6 object-contain shrink-0 bg-white rounded p-0.5 border border-slate-200" />
                         ) : (
                           <div className="w-6 h-6 rounded-full bg-slate-200 shrink-0" />
                         )}
@@ -575,13 +556,17 @@ export const MatchMap: React.FC = () => {
                         {match.field_name} ({match.city})
                       </p>
 
-                      {added ? (
-                        <span className="w-full inline-flex items-center justify-center gap-1.5 text-[11px] font-bold text-emerald-600 py-1.5">
-                          <Check className="w-3.5 h-3.5" /> A l'agenda
-                        </span>
+                      {addedTo ? (
+                        <button
+                          onClick={() => setPickerMatch(match)}
+                          className="w-full inline-flex items-center justify-center gap-1.5 text-[11px] font-bold text-emerald-600 py-1.5 hover:underline"
+                          title="Canviar les agendes"
+                        >
+                          <Check className="w-3.5 h-3.5 shrink-0" /> <span className="truncate">A l'agenda de {addedTo}</span>
+                        </button>
                       ) : (
                         <button
-                          onClick={() => handleAcceptPlanMatch(match)}
+                          onClick={() => setPickerMatch(match)}
                           className="w-full py-2 bg-[#061338] hover:bg-[#ff6600] text-white rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1.5"
                         >
                           <Plus className="w-3.5 h-3.5" />

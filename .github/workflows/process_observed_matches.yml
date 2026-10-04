@@ -1,0 +1,31 @@
+name: Jugadors Observats (diari)
+
+on:
+  schedule:
+    # Cada dia a les 06:00 UTC: processa els partits observats fa 2 dies o més
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  process-observed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 📥 Clonar repositorio
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Configurar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: 📦 Instalar dependencias del proyecto
+        run: npm ci || npm install
+
+      - name: 👁️ Marcar como observados a los jugadores que jugaron
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/process_observed_matches.cjs

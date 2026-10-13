@@ -5,7 +5,7 @@
  * Competiciones:
  *  - Lliga Preferent Infantil (905431907): Grup - 1 (905431908)
  *  - Primera Infantil (905431912): Grup - 1 (905431913), Grup - 2 (905431914)
- *  - Segona Infantil Castelló (905431645): todos sus grupos (hasta 7), cargados desde la API
+ *  - Segona Infantil: Grup - 1 a 4 (detección automática cuando se publique)
  * 
  * Uso:
  *   node scripts/scrape_ffcv_infantil.cjs [opciones]
@@ -46,9 +46,6 @@ const TARGET_COMPETITIONS = [
     ]
   }
 ];
-
-// Segona Infantil Castelló: los grupos (hasta 7) se cargan dinámicamente desde la API
-const SEGONA_INFANTIL_CASTELLO = { id: '905431645', name: 'Segona Infantil Castelló' };
 
 // Opciones CLI
 const args = process.argv.slice(2);
@@ -835,15 +832,39 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
   ensureDir(dataDir);
 
   try {
-    // ── 0. Cargar grupos de Segona Infantil Castelló ─────────────────────────
+    // ── 0. Comprobar si Segona Infantil ya está disponible en FFCV ──────────
+    console.log('\n🔍 Comprobando disponibilidad de Segona Regional Infantil (Grupos 1 al 4 de Castelló)...');
+    let segonaComp = null;
+    const compsData = await ffcvFetch(`filtros/competiciones_fetch.php?cod_temporada=${encodeURIComponent(TARGET_TEMPORADA)}`);
+    const found = (compsData?.competiciones || []).find(c => {
+      const n = (c.nombre || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      return (n.includes('segona') || n.includes('segunda') || n.includes('2a') || n.includes('2ª') || n.includes('2 regional')) &&
+             n.includes('infantil') && !n.includes('futsal') && !n.includes('platja');
+    });
+    if (found) {
+      const grpData = await ffcvFetch(`filtros/grupos_fetch.php?cod_competicion=${encodeURIComponent(found.codigo)}`);
+      const castellonGroups = (grpData?.grupos || []).filter(g => {
+        const m = g.nombre.match(/\b([1-4])\b/) || g.nombre.match(/grup[^\d]*([1-4])/i);
+        return Boolean(m);
+      });
+      if (castellonGroups.length > 0) {
+        segonaComp = {
+          id: String(found.codigo),
+          name: found.nombre,
+          groups: castellonGroups.map(g => ({ id: String(g.codigo), name: g.nombre }))
+        };
+      }
+    }
+
     const competitionsToScrape = [...TARGET_COMPETITIONS];
-    const segonaGrpData = await ffcvFetch(`filtros/grupos_fetch.php?cod_competicion=${encodeURIComponent(SEGONA_INFANTIL_CASTELLO.id)}`);
-    const segonaGroups = (segonaGrpData?.grupos || []).map(g => ({ id: String(g.codigo), name: g.nombre }));
-    if (segonaGroups.length > 0) {
-      console.log(`\n✅ ${SEGONA_INFANTIL_CASTELLO.name} (${SEGONA_INFANTIL_CASTELLO.id}): ${segonaGroups.length} grupos (${segonaGroups.map(g => g.name).join(', ')})`);
-      competitionsToScrape.push({ ...SEGONA_INFANTIL_CASTELLO, groups: segonaGroups });
+
+    if (segonaComp && segonaComp.groups.length > 0) {
+      console.log(`🎉 ¡Detectada ${segonaComp.name} (${segonaComp.id}) con ${segonaComp.groups.length} grupos de Castelló!`);
+      console.log(`   Grupos: ${segonaComp.groups.map(g => g.name).join(', ')}`);
+      competitionsToScrape.push(segonaComp);
     } else {
-      console.warn(`\n⚠️  ${SEGONA_INFANTIL_CASTELLO.name} (${SEGONA_INFANTIL_CASTELLO.id}): no se han podido obtener los grupos de la FFCV. Se omite en esta ejecución.`);
+      console.log('ℹ️  Segona Regional Infantil (Grupos 1 al 4 de Castelló):');
+      console.log('   La FFCV aún no ha publicado los calendarios. El sistema los revisará automáticamente cada semana y los incorporará en cuanto FFCV los publique.');
     }
 
     // ── 1. RASPADO DE PARTIDOS / AGENDA ──────────────────────────────────────────

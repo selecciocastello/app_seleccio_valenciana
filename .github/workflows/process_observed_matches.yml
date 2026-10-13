@@ -1,9 +1,9 @@
-name: Jugadors Observats (diari)
+name: Jugadors Observats (dilluns)
 
 on:
   schedule:
-    # Cada dia a les 06:00 UTC: processa els partits observats fa 2 dies o més
-    - cron: '0 6 * * *'
+    # Cada dilluns a les 06:00 UTC: processa els partits observats del cap de setmana
+    - cron: '0 6 * * 1'
   workflow_dispatch:
 
 jobs:
@@ -28,4 +28,4 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: node scripts/process_observed_matches.cjs
+        run: node scripts/process_observed_matches.cjs --min-days 1

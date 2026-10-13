@@ -829,6 +829,16 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
       console.log('📅 EXTRACCIÓN DE PARTIDOS Y AGENDA CON CAMPOS');
       console.log('========================================');
 
+      // Partidos de la ejecución anterior, para no perder jornadas si la FFCV falla
+      let previousMatches = [];
+      try {
+        previousMatches = JSON.parse(fs.readFileSync(path.join(dataDir, 'scraped_matches.json'), 'utf8'));
+        if (!Array.isArray(previousMatches)) previousMatches = [];
+      } catch (e) {}
+      const failedJornadas = [];
+      const failedGroups = [];
+      const stillFailed = [];
+
       for (const comp of competitionsToScrape) {
         console.log(`\n🏆 ${comp.name} (${comp.id})`);
 
@@ -836,15 +846,22 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
           console.log(`  🔹 ${grp.name} (${grp.id})`);
 
           const jornadasData = await ffcvFetch(`filtros/jornadas_fetch.php?cod_grupo=${encodeURIComponent(grp.id)}`);
-          const jornadas = Array.isArray(jornadasData?.jornadas) ? jornadasData.jornadas : [];
+          if (!jornadasData) {
+            const kept = previousMatches.filter(m => m.cod_grupo === grp.id);
+            allMatches.push(...kept);
+            failedGroups.push(`${comp.name} ${grp.name}`);
+            console.log(`     ⚠️ No se han podido obtener las jornadas. Se conservan ${kept.length} partidos anteriores.`);
+            continue;
+          }
+          const jornadas = Array.isArray(jornadasData.jornadas) ? jornadasData.jornadas : [];
           console.log(`     Total jornadas: ${jornadas.length}`);
 
-          for (const jor of jornadas) {
-            const codJornada = jor.codjornada || jor.nombre;
-            const jornadaNombre = `Jornada ${jor.nombre || codJornada}`;
-
+          /** Partidos de una jornada, o null si la FFCV no ha respondido. */
+          const scrapeJornada = async (codJornada, jornadaNombre) => {
             const partidosData = await ffcvFetch(`partidos/resultados_por_grupo_jornada_data.php?cod_grupo=${encodeURIComponent(grp.id)}&cod_jornada=${encodeURIComponent(codJornada)}`);
-            const partidosList = Array.isArray(partidosData?.partidos) ? partidosData.partidos : [];
+            if (!partidosData) return null;
+            const partidosList = Array.isArray(partidosData.partidos) ? partidosData.partidos : [];
+            const jornadaMatches = [];
 
             // Ficha detallada de cada partido (árbitros, código de campo, hora confirmada)
             const details = await mapWithConcurrency(partidosList, 3, (p) =>
@@ -879,7 +896,7 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
               const fechaPart = parseDate(matchDetail?.fecha || p.fecha);
               const horaPart = parseTime(matchDetail?.hora || p.hora);
 
-              allMatches.push({
+              jornadaMatches.push({
                 id: `ffcv-acta-${p.codacta || `${p.cod_equipo_local}-${p.cod_equipo_visitante}-${fechaPart}`}`,
                 codacta: p.codacta || null,
                 competition: comp.name,
@@ -908,12 +925,53 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
                 referees: Array.isArray(matchDetail?.arbitros_partido) ? matchDetail.arbitros_partido.map(a => a.nombre).filter(Boolean) : []
               });
             }
-            console.log(`       ${jornadaNombre}: ${partidosList.length} partidos recogidos`);
+            return jornadaMatches;
+          };
+
+          for (const jor of jornadas) {
+            const codJornada = jor.codjornada || jor.nombre;
+            const jornadaNombre = `Jornada ${jor.nombre || codJornada}`;
+            const jornadaMatches = await scrapeJornada(codJornada, jornadaNombre);
+            if (jornadaMatches) {
+              allMatches.push(...jornadaMatches);
+              console.log(`       ${jornadaNombre}: ${jornadaMatches.length} partidos recogidos`);
+            } else {
+              failedJornadas.push({ comp, grp, codJornada, jornadaNombre, scrapeJornada, insertAt: allMatches.length });
+              console.log(`       ${jornadaNombre}: sin respuesta de la FFCV, se reintentará al final`);
+            }
           }
           console.log(`     ✅ Grupo ${grp.name} completado.`);
         }
       }
+
+      // Jornadas que han fallado (p. ej. HTTP 503 de Novanet): se reintentan al final y, si
+      // siguen fallando, se conservan los partidos de la ejecución anterior en vez de perderlos.
+      if (failedJornadas.length > 0) {
+        console.log(`\n🔁 Reintentando ${failedJornadas.length} jornada(s) que habían fallado...`);
+        const recovered = [];
+        for (const f of failedJornadas) {
+          const label = `${f.comp.name} ${f.grp.name} - ${f.jornadaNombre}`;
+          let jornadaMatches = await f.scrapeJornada(f.codJornada, f.jornadaNombre);
+          if (jornadaMatches) {
+            console.log(`     ✅ ${label}: ${jornadaMatches.length} partidos recogidos`);
+          } else {
+            jornadaMatches = previousMatches.filter(m => m.cod_grupo === f.grp.id && m.matchday === f.jornadaNombre);
+            stillFailed.push(label);
+            console.log(`     ⚠️ ${label}: sigue fallando. Se conservan ${jornadaMatches.length} partidos anteriores.`);
+          }
+          recovered.push(jornadaMatches);
+        }
+        // Se insertan en su posición original (de atrás adelante para no mover los índices)
+        for (let i = failedJornadas.length - 1; i >= 0; i--) {
+          allMatches.splice(failedJornadas[i].insertAt, 0, ...recovered[i]);
+        }
+      }
+
       console.log(`\n🏟️  Total partidos recogidos para la agenda: ${allMatches.length}`);
+      const notUpdated = [...failedGroups, ...stillFailed];
+      if (notUpdated.length > 0) {
+        console.warn(`⚠️ No actualizados en esta ejecución (se mantienen los datos anteriores): ${notUpdated.join('; ')}`);
+      }
 
       // Guardar ya los partidos para no perderlos si la fase de jugadores falla
       if (allMatches.length > 0) {

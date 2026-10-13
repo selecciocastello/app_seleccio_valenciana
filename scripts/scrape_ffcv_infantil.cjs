@@ -5,7 +5,7 @@
  * Competiciones:
  *  - Lliga Preferent Infantil (905431907): Grup - 1 (905431908)
  *  - Primera Infantil (905431912): Grup - 1 (905431913), Grup - 2 (905431914)
- *  - Segona Infantil: Grup - 1 a 4 (detección automática cuando se publique)
+ *  - Segona Infantil Castelló (905431645): Grup - 1 a 7
  * 
  * Uso:
  *   node scripts/scrape_ffcv_infantil.cjs [opciones]
@@ -16,14 +16,15 @@
  *   --limit-teams <n>     Limitar número de equipos por grupo para pruebas
  *   --limit-players <n>   Limitar número de jugadores por equipo para pruebas
  *
- * Todos los datos se obtienen de la API JSON pública de ffcv.es (la misma que usa
- * su web), sin navegador. La FFCV limita a ~240 peticiones/minuto por IP (HTTP 429
+ * Todos los datos se obtienen de la API JSON de ffcv.es (la misma que usa su web) a
+ * través de un navegador Playwright (ver ffcv_client.cjs). La FFCV limita a ~240 peticiones/minuto por IP (HTTP 429
  * con retry_after), así que todas las peticiones pasan por un limitador global.
  */
 
 const fs = require('fs');
 const path = require('path');
 const { toPhotoUrl } = require('./player_photos.cjs');
+const { ffcvApiGet, closeFfcv } = require('./ffcv_client.cjs');
 
 // Configuración de competiciones solicitadas: Preferente, 1ª Regional y 2ª Regional
 const TARGET_TEMPORADA = '22'; // 2026-2027
@@ -44,6 +45,19 @@ const TARGET_COMPETITIONS = [
       { id: '905431913', name: 'Grup - 1' },
       { id: '905431914', name: 'Grup - 2' }
     ]
+  },
+  {
+    id: '905431645',
+    name: 'Segona Infantil Castelló',
+    groups: [
+      { id: '905431649', name: 'Grup - 1' },
+      { id: '905431650', name: 'Grup - 2' },
+      { id: '905431651', name: 'Grup - 3' },
+      { id: '905431646', name: 'Grup - 4' },
+      { id: '905431647', name: 'Grup - 5' },
+      { id: '905431648', name: 'Grup - 6' },
+      { id: '906280708', name: 'Grup - 7' }
+    ]
   }
 ];
 
@@ -57,43 +71,18 @@ const limitPlayersIdx = args.indexOf('--limit-players');
 const limitPlayers = limitPlayersIdx !== -1 ? parseInt(args[limitPlayersIdx + 1], 10) : Infinity;
 
 // ── Cliente HTTP de la API FFCV con límite de peticiones ─────────────────────
-const FFCV_API_BASE = 'https://ffcv.es/competiciones/api';
-const MIN_REQUEST_INTERVAL_MS = 300; // ~200 peticiones/minuto, por debajo del límite de la FFCV
-const FFCV_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  'Referer': 'https://ffcv.es/competiciones/',
-  'X-Requested-With': 'XMLHttpRequest'
-};
-
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-let nextRequestAt = 0;
-
-async function acquireRequestSlot() {
-  const now = Date.now();
-  const slot = Math.max(now, nextRequestAt);
-  nextRequestAt = slot + MIN_REQUEST_INTERVAL_MS;
-  if (slot > now) await sleep(slot - now);
-}
 
 /**
  * GET a la API de la FFCV. Devuelve el JSON o null si falla tras los reintentos.
- * Ante un 429 pausa todas las peticiones el tiempo que indique retry_after.
+ * El límite de peticiones y los 429 los gestiona ffcv_client.cjs.
  */
 async function ffcvFetch(endpoint, maxRetries = 5) {
-  const url = `${FFCV_API_BASE}/${endpoint}`;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    await acquireRequestSlot();
     try {
-      const res = await fetch(url, { headers: FFCV_HEADERS, signal: AbortSignal.timeout(20000) });
-      if (res.status === 429) {
-        const body = await res.json().catch(() => ({}));
-        const waitSecs = (parseInt(body.retry_after, 10) || 60) + 2;
-        console.warn(`        ⏳ Límite de peticiones FFCV alcanzado. Esperando ${waitSecs}s...`);
-        nextRequestAt = Math.max(nextRequestAt, Date.now() + waitSecs * 1000);
-        continue;
-      }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.json();
+      const res = await ffcvApiGet(endpoint);
+      if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
+      return res.data;
     } catch (err) {
       if (attempt >= maxRetries) {
         console.warn(`        ⚠️ Error definitivo en ${endpoint}: ${err.message}`);
@@ -832,40 +821,7 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
   ensureDir(dataDir);
 
   try {
-    // ── 0. Comprobar si Segona Infantil ya está disponible en FFCV ──────────
-    console.log('\n🔍 Comprobando disponibilidad de Segona Regional Infantil (Grupos 1 al 4 de Castelló)...');
-    let segonaComp = null;
-    const compsData = await ffcvFetch(`filtros/competiciones_fetch.php?cod_temporada=${encodeURIComponent(TARGET_TEMPORADA)}`);
-    const found = (compsData?.competiciones || []).find(c => {
-      const n = (c.nombre || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-      return (n.includes('segona') || n.includes('segunda') || n.includes('2a') || n.includes('2ª') || n.includes('2 regional')) &&
-             n.includes('infantil') && !n.includes('futsal') && !n.includes('platja');
-    });
-    if (found) {
-      const grpData = await ffcvFetch(`filtros/grupos_fetch.php?cod_competicion=${encodeURIComponent(found.codigo)}`);
-      const castellonGroups = (grpData?.grupos || []).filter(g => {
-        const m = g.nombre.match(/\b([1-4])\b/) || g.nombre.match(/grup[^\d]*([1-4])/i);
-        return Boolean(m);
-      });
-      if (castellonGroups.length > 0) {
-        segonaComp = {
-          id: String(found.codigo),
-          name: found.nombre,
-          groups: castellonGroups.map(g => ({ id: String(g.codigo), name: g.nombre }))
-        };
-      }
-    }
-
     const competitionsToScrape = [...TARGET_COMPETITIONS];
-
-    if (segonaComp && segonaComp.groups.length > 0) {
-      console.log(`🎉 ¡Detectada ${segonaComp.name} (${segonaComp.id}) con ${segonaComp.groups.length} grupos de Castelló!`);
-      console.log(`   Grupos: ${segonaComp.groups.map(g => g.name).join(', ')}`);
-      competitionsToScrape.push(segonaComp);
-    } else {
-      console.log('ℹ️  Segona Regional Infantil (Grupos 1 al 4 de Castelló):');
-      console.log('   La FFCV aún no ha publicado los calendarios. El sistema los revisará automáticamente cada semana y los incorporará en cuanto FFCV los publique.');
-    }
 
     // ── 1. RASPADO DE PARTIDOS / AGENDA ──────────────────────────────────────────
     if (!playersOnly) {
@@ -1084,6 +1040,9 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
     }
 
     // ── 4. SINCRONIZACIÓN CON SUPABASE (SI ESTÁ ACTIVO) ──────────────────────────
+    if (allMatches.length === 0 && allTeams.length === 0) {
+      throw new Error('No se ha obtenido ningún partido ni equipo de la FFCV (¿acceso bloqueado?). No se sincroniza nada.');
+    }
     await trySaveToSupabase(allMatches, allTeams, allPlayers, { playersComplete });
 
     console.log(`\n✨ ¡Proceso de scraping finalizado con éxito en ${Math.round((Date.now() - startedAt) / 1000)}s!`);
@@ -1091,5 +1050,7 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
   } catch (err) {
     console.error('\n❌ Error durante el scraping:', err);
     process.exitCode = 1;
+  } finally {
+    await closeFfcv();
   }
 })();

@@ -9,6 +9,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { ffcvApiGet, closeFfcv } = require('./ffcv_client.cjs');
 
 const TARGET_COMPETITIONS = [
   {
@@ -22,6 +23,19 @@ const TARGET_COMPETITIONS = [
     groups: [
       { id: '905431913', name: 'Grup - 1' },
       { id: '905431914', name: 'Grup - 2' }
+    ]
+  },
+  {
+    id: '905431645',
+    name: 'Segona Infantil Castelló',
+    groups: [
+      { id: '905431649', name: 'Grup - 1' },
+      { id: '905431650', name: 'Grup - 2' },
+      { id: '905431651', name: 'Grup - 3' },
+      { id: '905431646', name: 'Grup - 4' },
+      { id: '905431647', name: 'Grup - 5' },
+      { id: '905431648', name: 'Grup - 6' },
+      { id: '906280708', name: 'Grup - 7' }
     ]
   }
 ];
@@ -40,16 +54,15 @@ function saveFieldsCache() {
   fs.writeFileSync(FIELDS_CACHE_FILE, JSON.stringify(obj, null, 2), 'utf8');
 }
 
+const FFCV_API_PREFIX = 'https://ffcv.es/competiciones/api/';
+
+/** GET a la API de la FFCV (vía navegador). Devuelve el JSON o null. */
 async function fetchJson(url) {
   try {
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-      }
-    });
-    if (!res.ok) return null;
-    return await res.json();
+    const { data } = await ffcvApiGet(url.replace(FFCV_API_PREFIX, ''));
+    return data;
   } catch (e) {
+    console.warn(`        ⚠️ Error en ${url}: ${e.message}`);
     return null;
   }
 }
@@ -125,53 +138,11 @@ function loadEnv() {
   return env;
 }
 
-async function detectSegonaInfantil() {
-  try {
-    const data = await fetchJson('https://ffcv.es/competiciones/api/filtros/competiciones_fetch.php?cod_temporada=22');
-    if (!data || !Array.isArray(data.competiciones)) return null;
-
-    const segonaComp = data.competiciones.find(c => {
-      const n = (c.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      return (n.includes('segona') || n.includes('segunda') || n.includes('2a') || n.includes('2ª') || n.includes('2 regional')) &&
-             n.includes('infantil') && !n.includes('futsal') && !n.includes('platja');
-    });
-
-    if (!segonaComp) return null;
-
-    const grpData = await fetchJson(`https://ffcv.es/competiciones/api/filtros/grupos_fetch.php?cod_competicion=${encodeURIComponent(segonaComp.codigo)}`);
-    if (!grpData || !Array.isArray(grpData.grupos)) return null;
-
-    // Grupos 1 al 4 de Castelló
-    const castellonGroups = grpData.grupos.filter(g => {
-      const m = g.nombre.match(/\b([1-4])\b/) || g.nombre.match(/grup[^\d]*([1-4])/i);
-      return Boolean(m);
-    });
-
-    if (castellonGroups.length === 0) return null;
-
-    return {
-      id: String(segonaComp.codigo),
-      name: segonaComp.nombre,
-      groups: castellonGroups.map(g => ({ id: String(g.codigo), name: g.nombre }))
-    };
-  } catch (e) {
-    return null;
-  }
-}
-
 async function main() {
   console.log('🚀 Iniciando extracción rápida de partidos, jornadas y clasificaciones FFCV...');
   const allMatches = [];
 
   const competitions = [...TARGET_COMPETITIONS];
-  const segona = await detectSegonaInfantil();
-  if (segona && segona.groups.length > 0) {
-    console.log(`\n🎉 ¡Detectada ${segona.name} (${segona.id}) con ${segona.groups.length} grupos de Castelló!`);
-    competitions.push(segona);
-  } else {
-    console.log('\n⏳ Segona Regional Infantil (Grupos 1 al 4 de Castelló):');
-    console.log('   La FFCV aún no ha publicado los calendarios. El sistema los revisará automáticamente cada semana y los incorporará en cuanto FFCV los publique.');
-  }
 
   for (const comp of competitions) {
     console.log(`\n🏆 ${comp.name} (${comp.id})`);
@@ -312,9 +283,19 @@ async function main() {
 
   // Guardar archivo final de partidos
   const outPath = path.join(__dirname, '..', 'src', 'data', 'scraped_matches.json');
+  if (allMatches.length === 0) {
+    console.error('\n❌ No se ha obtenido ningún partido de la FFCV: no se sobrescribe scraped_matches.json.');
+    process.exitCode = 1;
+    return;
+  }
   fs.writeFileSync(outPath, JSON.stringify(allMatches, null, 2), 'utf8');
   console.log(`\n🎉 ¡Extracción de partidos completada con éxito!`);
   console.log(`   Total partidos guardados: ${allMatches.length} en ${outPath}`);
 }
 
-main().catch(console.error);
+main()
+  .catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  })
+  .finally(closeFfcv);

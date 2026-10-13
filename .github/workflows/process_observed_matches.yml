@@ -24,6 +24,9 @@ jobs:
       - name: 📦 Instalar dependencias del proyecto
         run: npm ci || npm install
 
+      - name: 🌐 Instalar navegador Chromium (Playwright)
+        run: npx playwright install --with-deps chromium
+
       - name: 👁️ Marcar como observados a los jugadores que jugaron
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}

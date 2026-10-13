@@ -24,6 +24,7 @@ if (!globalThis.WebSocket) {
   globalThis.WebSocket = class DummyWebSocket {};
 }
 const { createClient } = require('@supabase/supabase-js');
+const { ffcvApiGet, closeFfcv } = require('./ffcv_client.cjs');
 
 const args = process.argv.slice(2);
 const argValue = (name) => {
@@ -36,11 +37,6 @@ const dryRun = args.includes('--dry-run') || Boolean(testCodacta);
 const MIN_DAYS_AFTER_MATCH = parseInt(argValue('--min-days') || '2', 10);
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const FFCV_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  'Referer': 'https://ffcv.es/competiciones/',
-  'X-Requested-With': 'XMLHttpRequest'
-};
 
 function loadEnv() {
   const env = {};
@@ -60,16 +56,12 @@ const normalizeName = (s) =>
   String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
 
 async function fetchActa(codacta) {
-  const url = `https://ffcv.es/competiciones/api/partidos/ficha_partido_ajax.php?cod_partido=${encodeURIComponent(codacta)}`;
+  const endpoint = `partidos/ficha_partido_ajax.php?cod_partido=${encodeURIComponent(codacta)}`;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const res = await fetch(url, { headers: FFCV_HEADERS, signal: AbortSignal.timeout(30000) });
-      if (res.status === 429) {
-        await new Promise((r) => setTimeout(r, 60000));
-        continue;
-      }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.json();
+      const res = await ffcvApiGet(endpoint);
+      if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
+      return res.data;
     } catch (err) {
       if (attempt === 3) throw err;
       await new Promise((r) => setTimeout(r, 2000 * attempt));
@@ -261,7 +253,9 @@ async function main() {
   console.log(`\n✅ ${processed} partidos procesados, ${totalPromoted} jugadores ${dryRun ? 'pasarían' : 'pasados'} a Observado.`);
 }
 
-main().catch((err) => {
-  console.error('❌', err.message);
-  process.exitCode = 1;
-});
+main()
+  .catch((err) => {
+    console.error('❌', err.message);
+    process.exitCode = 1;
+  })
+  .finally(closeFfcv);

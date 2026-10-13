@@ -1,4 +1,15 @@
 {
+  "4927": {
+    "codigo_campo": "4927",
+    "nombre": "Campo Mpal. Juan Montoliu Gallart F-11 Artana ",
+    "direccion": "Calle Onda, 11",
+    "localidad": "Artana",
+    "provincia": "Castellón",
+    "codigo_postal": "12527",
+    "superficie": "Hierba Artificial",
+    "latitude": 39.8878797,
+    "longitude": -0.2574364
+  },
   "4929": {
     "codigo_campo": "4929",
     "nombre": "Campo Mpal. Joan B. Planelles Marco F-11 Burriana ",
@@ -20,6 +31,28 @@
     "superficie": "Hierba Artificial",
     "latitude": 39.8825946,
     "longitude": -0.0883094
+  },
+  "4931": {
+    "codigo_campo": "4931",
+    "nombre": "Estadio Mpal. Ricardo Martin F-11 Cabanes ",
+    "direccion": "Calle El Campet, 3",
+    "localidad": "Cabanes",
+    "provincia": "Castellón",
+    "codigo_postal": "12180",
+    "superficie": "Hierba Artificial",
+    "latitude": 40.1535318,
+    "longitude": 0.0475586
+  },
+  "4934": {
+    "codigo_campo": "4934",
+    "nombre": "Campo Mpal. Pla de Mig Ull F-11 Cinctorres ",
+    "direccion": "Calle Pajares San Luis, 28 B",
+    "localidad": "Cinctorres",
+    "provincia": "Castellón",
+    "codigo_postal": "12318",
+    "superficie": "Hierba Natural",
+    "latitude": 40.6459655,
+    "longitude": -0.2471156
   },
   "4937": {
     "codigo_campo": "4937",
@@ -75,6 +108,17 @@
     "superficie": "Hierba Artificial",
     "latitude": 39.4930247,
     "longitude": -0.3633563
+  },
+  "5021": {
+    "codigo_campo": "5021",
+    "nombre": "Ciudad Dptva. El Sisterre F-11 Segorbe Campo A",
+    "direccion": "Calle Enramada, s/n",
+    "localidad": "Segorbe",
+    "provincia": "Castellón",
+    "codigo_postal": "12400",
+    "superficie": "Hierba Artificial",
+    "latitude": 39.8452663,
+    "longitude": -0.4840611
   },
   "5046": {
     "codigo_campo": "5046",
@@ -142,6 +186,28 @@
     "latitude": 39.4998321,
     "longitude": -0.3556612
   },
+  "5102": {
+    "codigo_campo": "5102",
+    "nombre": "Campo Mpal. El Colomer F-11 Traiguera ",
+    "direccion": "Polideportivo Traiguera",
+    "localidad": "Traiguera",
+    "provincia": "Castellón",
+    "codigo_postal": "12330",
+    "superficie": "Hierba Natural",
+    "latitude": null,
+    "longitude": null
+  },
+  "5105": {
+    "codigo_campo": "5105",
+    "nombre": "Campo Mpal. El Plano F-11 Altura ",
+    "direccion": "Avenida de Valencia, s/n",
+    "localidad": "Altura",
+    "provincia": "Castellón",
+    "codigo_postal": "12410",
+    "superficie": "Hierba Artificial",
+    "latitude": null,
+    "longitude": null
+  },
   "5110": {
     "codigo_campo": "5110",
     "nombre": "Campo Mpal. Torre San Vicente F-11 Benicasim ",
@@ -197,6 +263,17 @@
     "latitude": 39.6809778,
     "longitude": -0.2854445
   },
+  "5157": {
+    "codigo_campo": "5157",
+    "nombre": "Campo Mpal. San Fernando F-11 Alcala de Xivert ",
+    "direccion": "Calle General Cucala, s/n",
+    "localidad": "Alcalà de Xivert",
+    "provincia": "Castellón",
+    "codigo_postal": "12570",
+    "superficie": "Hierba Artificial",
+    "latitude": 40.3013673,
+    "longitude": 0.225241
+  },
   "5158": {
     "codigo_campo": "5158",
     "nombre": "Campo Mpal. El Saltador F-11 L`Alcora ",
@@ -208,6 +285,28 @@
     "latitude": null,
     "longitude": null
   },
+  "5159": {
+    "codigo_campo": "5159",
+    "nombre": "Campo Mpal. Moncofa F-11",
+    "direccion": "Carrer del Dr. Fleming, 30",
+    "localidad": "Moncofa",
+    "provincia": "Castellón",
+    "codigo_postal": "12593",
+    "superficie": "Hierba Artificial",
+    "latitude": 39.8050496,
+    "longitude": -0.1450099
+  },
+  "5160": {
+    "codigo_campo": "5160",
+    "nombre": "Campo Mpal. Javier Marquina F-11 Castellón ",
+    "direccion": "C/ Astronom Faust Valles, 11",
+    "localidad": "Castellón De La Plana",
+    "provincia": "Castellón",
+    "codigo_postal": "12100",
+    "superficie": "Hierba Artificial",
+    "latitude": 39.9761011,
+    "longitude": 0.004663
+  },
   "5162": {
     "codigo_campo": "5162",
     "nombre": "Instalaciones Dptvas. Alquerias F-11 Campo 1",
@@ -218,6 +317,50 @@
     "superficie": "Hierba Artificial",
     "latitude": null,
     "longitude": null
+  },
+  "5164": {
+    "codigo_campo": "5164",
+    "nombre": "Campo Mpal. La Arboleda F-11 Sant Mateu ",
+    "direccion": "Calle Constitución , s/n",
+    "localidad": "Sant Mateu",
+    "provincia": "Castellón",
+    "codigo_postal": "12170",
+    "superficie": "Hierba Artificial",
+    "latitude": null,
+    "longitude": null
+  },
+  "5165": {
+    "codigo_campo": "5165",
+    "nombre": "Campo Mpal. El Serrito F-11 Villafranca del Cid",
+    "direccion": "Calle Santa Barbara, s/n",
+    "localidad": "Villafranca Del Cid",
+    "provincia": "Castellón",
+    "codigo_postal": "12150",
+    "superficie": "Hierba Natural",
+    "latitude": 40.4307768,
+    "longitude": -0.2608857
+  },
+  "5166": {
+    "codigo_campo": "5166",
+    "nombre": "Campo Mpal. La Cantera F-11 La Vilavella ",
+    "direccion": "Calle Bechi, 1",
+    "localidad": "Vilavella (La)",
+    "provincia": "Castellón",
+    "codigo_postal": "12526",
+    "superficie": "Hierba Artificial",
+    "latitude": 39.8610932,
+    "longitude": -0.1848186
+  },
+  "5168": {
+    "codigo_campo": "5168",
+    "nombre": "Campo Mpal. L' Alter F-11 Xilxes ",
+    "direccion": "Calle Circunvalacion, 8",
+    "localidad": "Chilches",
+    "provincia": "Castellón",
+    "codigo_postal": "12592",
+    "superficie": "Hierba Artificial",
+    "latitude": 39.781636,
+    "longitude": -0.1826034
   },
   "5169": {
     "codigo_campo": "5169",
@@ -252,6 +395,17 @@
     "latitude": 39.81296469999999,
     "longitude": -0.2288816
   },
+  "5259": {
+    "codigo_campo": "5259",
+    "nombre": "Campo de Fútbol Mpal. Betxi F-11",
+    "direccion": "Calle De Los Deportes, 1",
+    "localidad": "Betxí",
+    "provincia": "Castellón",
+    "codigo_postal": "12549",
+    "superficie": "Hierba Artificial",
+    "latitude": null,
+    "longitude": null
+  },
   "5260": {
     "codigo_campo": "5260",
     "nombre": "Campo Mpal. Jose Manuel Pesudo F-11 Almassora ",
@@ -263,6 +417,17 @@
     "latitude": 39.9526337,
     "longitude": -0.0693665
   },
+  "5261": {
+    "codigo_campo": "5261",
+    "nombre": "Campo Mpal. de Randurias F-11 Jerica ",
+    "direccion": "Calle Randurias, 1",
+    "localidad": "Jérica",
+    "provincia": "Castellón",
+    "codigo_postal": "12450",
+    "superficie": "Hierba Artificial",
+    "latitude": 39.9149907,
+    "longitude": -0.5754927
+  },
   "5264": {
     "codigo_campo": "5264",
     "nombre": "Campo Mpal. Polígono Rafalafena F-11 Castellón ",
@@ -273,6 +438,28 @@
     "superficie": "Hierba Artificial",
     "latitude": 39.9897262,
     "longitude": -0.0297123
+  },
+  "5265": {
+    "codigo_campo": "5265",
+    "nombre": "Campo Mpal. Las Boqueras F-11 Almassora ",
+    "direccion": "Calle Boqueras, s/n",
+    "localidad": "Almazora",
+    "provincia": "Castellón",
+    "codigo_postal": "12550",
+    "superficie": "Hierba Artificial",
+    "latitude": 39.9516822,
+    "longitude": -0.0656374
+  },
+  "5266": {
+    "codigo_campo": "5266",
+    "nombre": "Campos Mpales. La Moleta F-11 Vall d`Uxó Campo A",
+    "direccion": "Ronda Enrique Marco Zaragoza, 5",
+    "localidad": "Vall D'Uixó (La)",
+    "provincia": "Castellón",
+    "codigo_postal": "12600",
+    "superficie": "Hierba Artificial",
+    "latitude": 39.81982989999999,
+    "longitude": -0.2392425
   },
   "5270": {
     "codigo_campo": "5270",
@@ -329,6 +516,28 @@
     "latitude": 40.0160091,
     "longitude": -0.042211
   },
+  "5303": {
+    "codigo_campo": "5303",
+    "nombre": "Ciudad Dptva. Facsa Castellón F-11 Campo 1",
+    "direccion": "Cuadra Colomera, 9",
+    "localidad": "Castellón De La Plana",
+    "provincia": "Castellón",
+    "codigo_postal": "12004",
+    "superficie": "Hierba Artificial",
+    "latitude": 40.0094102,
+    "longitude": -0.0429557
+  },
+  "5324": {
+    "codigo_campo": "5324",
+    "nombre": "Campo Mpal. Dep. Torreblanca F-11 Campo 1",
+    "direccion": "Avinguda del Camp d`Esports, s/n",
+    "localidad": "Torreblanca",
+    "provincia": "Castellón",
+    "codigo_postal": "12596",
+    "superficie": "Hierba Artificial",
+    "latitude": 40.2208687,
+    "longitude": 0.2022825
+  },
   "5338": {
     "codigo_campo": "5338",
     "nombre": "Polideportivo Mpal. Quatre Carreres F-11",
@@ -350,6 +559,17 @@
     "superficie": "Hierba Artificial",
     "latitude": 39.7556249,
     "longitude": -0.2335014
+  },
+  "5358": {
+    "codigo_campo": "5358",
+    "nombre": "Campo L`Avenc Vall d`Alba Campo 2 F-11",
+    "direccion": "Avenida Pou Ample, s/n",
+    "localidad": "Vall D'Alba",
+    "provincia": "Castellón",
+    "codigo_postal": "12194",
+    "superficie": "Hierba Artificial",
+    "latitude": 40.1729832,
+    "longitude": -0.0343033
   },
   "5368": {
     "codigo_campo": "5368",
@@ -373,6 +593,50 @@
     "latitude": 39.8477497,
     "longitude": -0.1622489
   },
+  "5396": {
+    "codigo_campo": "5396",
+    "nombre": "Campo Mpal. Benedicto XIII F-11 Peñiscola ",
+    "direccion": "Carrer de les Marjarls, 11",
+    "localidad": "Peñíscola",
+    "provincia": "Castellón",
+    "codigo_postal": "12598",
+    "superficie": "Hierba Artificial",
+    "latitude": 40.3678465,
+    "longitude": 0.3998379
+  },
+  "5423": {
+    "codigo_campo": "5423",
+    "nombre": "Campo Mpal. de Oropesa F-11 Oropesa Del Mar",
+    "direccion": "Avenida del Mar, s/n",
+    "localidad": "Oropesa Del Mar",
+    "provincia": "Castellón",
+    "codigo_postal": "12594",
+    "superficie": "Hierba Artificial",
+    "latitude": 40.0945381,
+    "longitude": 0.142381
+  },
+  "5506": {
+    "codigo_campo": "5506",
+    "nombre": "Campos Mpales. La Moleta F-11 Vall d`Uxó Campo B",
+    "direccion": "Ronda Enrique Marco Zaragoza, 5",
+    "localidad": "Vall D'Uixó (La)",
+    "provincia": "Castellón",
+    "codigo_postal": "12600",
+    "superficie": "Hierba Artificial",
+    "latitude": 39.81982989999999,
+    "longitude": -0.2392425
+  },
+  "5529": {
+    "codigo_campo": "5529",
+    "nombre": "Campo Fútbol Parque Mérida Castellón de la Plana F-11",
+    "direccion": "Calle Alzira, s/n",
+    "localidad": "Castellón De La Plana",
+    "provincia": "Castellón",
+    "codigo_postal": "12006",
+    "superficie": "Hierba Artificial",
+    "latitude": 39.98254,
+    "longitude": -0.0649146
+  },
   "5553": {
     "codigo_campo": "5553",
     "nombre": "Polideportivo Mpal. de Rocafort F-11",
@@ -394,6 +658,50 @@
     "superficie": "Hierba Artificial",
     "latitude": 39.66682369999999,
     "longitude": -0.3324856
+  },
+  "5595": {
+    "codigo_campo": "5595",
+    "nombre": "Polidep. Mpal. David Casinos Miguel Tendillo F-11 Moncada Campo 2",
+    "direccion": "Camino de la Pelosa, 3,",
+    "localidad": "Moncada",
+    "provincia": "Valencia",
+    "codigo_postal": "46113",
+    "superficie": "Hierba Artificial",
+    "latitude": 39.5603537,
+    "longitude": -0.3999451
+  },
+  "6393": {
+    "codigo_campo": "6393",
+    "nombre": "Ciudad Dptva. Facsa Castellón F-11 Campo 2",
+    "direccion": "Cuadra Colomera, 9",
+    "localidad": "Castellón De La Plana",
+    "provincia": "Castellón",
+    "codigo_postal": "12004",
+    "superficie": "Hierba Artificial",
+    "latitude": 40.0094102,
+    "longitude": -0.0429557
+  },
+  "6759": {
+    "codigo_campo": "6759",
+    "nombre": "Ciudad Dptva. José Manuel Llaneza F-11 Vila-real Campo 7 ",
+    "direccion": "Carrer Miralcamp, 128",
+    "localidad": "Vila-real",
+    "provincia": "Castellón",
+    "codigo_postal": "12540",
+    "superficie": "Hierba Artificial",
+    "latitude": 39.9389616,
+    "longitude": -0.1210713
+  },
+  "6774": {
+    "codigo_campo": "6774",
+    "nombre": "Ciudad Dptva. Chencho Campo B F-11 Castellón ",
+    "direccion": "Calle Pl Numero 125, 50R",
+    "localidad": "Castellón De La Plana",
+    "provincia": "Castellón",
+    "codigo_postal": "12004",
+    "superficie": "Hierba Artificial",
+    "latitude": 40.0160091,
+    "longitude": -0.042211
   },
   "6775": {
     "codigo_campo": "6775",
@@ -428,6 +736,17 @@
     "latitude": 40.4746779,
     "longitude": 0.4555777
   },
+  "7303": {
+    "codigo_campo": "7303",
+    "nombre": "Polideportivo Mpal. La Pedrera II F-11 El Puig ",
+    "direccion": "Calle Pedrera, 1",
+    "localidad": "Puig",
+    "provincia": "Valencia",
+    "codigo_postal": "46540",
+    "superficie": "Hierba Artificial",
+    "latitude": 39.5918011,
+    "longitude": -0.2956536
+  },
   "7318": {
     "codigo_campo": "7318",
     "nombre": "Ciutat Esptva. Pamesa Ceramica F-11 Vila-real Campo 1",
@@ -450,6 +769,17 @@
     "latitude": 39.92665,
     "longitude": -0.10087
   },
+  "7471": {
+    "codigo_campo": "7471",
+    "nombre": "Estadio Mpal. Jose Mangriñan F-11 Vall d`Uxó Campo 2 ",
+    "direccion": "Av. d'Europa, 10",
+    "localidad": "Vall D'Uixó (La)",
+    "provincia": "Castellón",
+    "codigo_postal": "12600",
+    "superficie": "Hierba Artificial",
+    "latitude": 39.81296469999999,
+    "longitude": -0.2288816
+  },
   "7520": {
     "codigo_campo": "7520",
     "nombre": "Ciutat Esptva. Mpal. (CEM) F-11 Vila-real Campo A Oeste ",
@@ -460,6 +790,39 @@
     "superficie": "Hierba Artificial",
     "latitude": 39.9390127,
     "longitude": -0.1085164
+  },
+  "7523": {
+    "codigo_campo": "7523",
+    "nombre": "Ciutat Esptva. Mpal. (CEM) F-11 Vila-real Campo B Este ",
+    "direccion": "Avenida Alemanya, s/n",
+    "localidad": "Vila-real",
+    "provincia": "Castellón",
+    "codigo_postal": "12540",
+    "superficie": "Hierba Artificial",
+    "latitude": 39.9390127,
+    "longitude": -0.1085164
+  },
+  "7654": {
+    "codigo_campo": "7654",
+    "nombre": "Campo Mpal. Olimpic F-11 Onda",
+    "direccion": "Plaça Poligono, 50",
+    "localidad": "Onda",
+    "provincia": "Castellón",
+    "codigo_postal": "12200",
+    "superficie": "Hierba Artificial",
+    "latitude": null,
+    "longitude": null
+  },
+  "7663": {
+    "codigo_campo": "7663",
+    "nombre": "Campo Futbol Mpal. de Almussafes F-11 Campo 2",
+    "direccion": "Avenida de la Foia, s/n",
+    "localidad": "Almussafes",
+    "provincia": "Valencia",
+    "codigo_postal": "46440",
+    "superficie": "Hierba Artificial",
+    "latitude": 39.3135964,
+    "longitude": -0.4195638
   },
   "7882": {
     "codigo_campo": "7882",
@@ -493,6 +856,17 @@
     "superficie": "Hierba Artificial",
     "latitude": 40.00944,
     "longitude": -0.04366
+  },
+  "28197821": {
+    "codigo_campo": "28197821",
+    "nombre": "Complejo Dptvo. Mas Camarena Betera F-11 Campo 2",
+    "direccion": "Calle Botxi, 4",
+    "localidad": "Bétera",
+    "provincia": "Valencia",
+    "codigo_postal": "46117",
+    "superficie": "Hierba Artificial",
+    "latitude": 39.57914,
+    "longitude": -0.4757799999999999
   },
   "29278960": {
     "codigo_campo": "29278960",

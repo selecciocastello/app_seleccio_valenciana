@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { FileText, Star, Sparkles } from 'lucide-react';
+import { Star, Sparkles, Mic, MicOff } from 'lucide-react';
 import { JerseyBadge } from '../ui/JerseyBadge';
+import { AudioNotePlayer } from '../ui/AudioNotePlayer';
 import { useAppStore } from '../../hooks/useAppStore';
 import { useToast } from '../../contexts/ToastContext';
+import { useVoiceRecorder } from '../../hooks/useVoiceRecorder';
+import { saveVoiceNote, getVoiceNotesForPlayer } from '../../utils/audioStorage';
 import { PLAYER_POSITIONS, type Player, type PlayerStatus } from '../../types/models';
 
 const NO_POSITION = 'Sense definir';
@@ -26,10 +29,39 @@ export const PlayerScoutingCard: React.FC<{ player: Player }> = ({ player }) => 
   const { updatePlayer } = useAppStore();
   const { showToast } = useToast();
   const [note, setNote] = useState(player.notes || '');
+  const [voiceAudioUrl, setVoiceAudioUrl] = useState<string | null>(null);
+
+  const {
+    isRecording,
+    recordingTime,
+    audioUrl,
+    transcript,
+    startRecording,
+    stopRecording,
+    resetRecording
+  } = useVoiceRecorder('ca-ES');
 
   useEffect(() => {
     setNote(player.notes || '');
-  }, [player.id, player.notes]);
+    const sportsVoice = (player.sports_data as any)?.voice_note;
+    if (sportsVoice?.audioBase64) {
+      setVoiceAudioUrl(sportsVoice.audioBase64);
+    } else {
+      getVoiceNotesForPlayer(player.id).then((notes) => {
+        if (notes.length > 0 && notes[notes.length - 1].audioBase64) {
+          setVoiceAudioUrl(notes[notes.length - 1].audioBase64);
+        } else {
+          setVoiceAudioUrl(null);
+        }
+      });
+    }
+  }, [player.id, player.notes, player.sports_data]);
+
+  useEffect(() => {
+    if (transcript && isRecording) {
+      setNote(transcript);
+    }
+  }, [transcript, isRecording]);
 
   const isPreselected = player.status === 'Preseleccionado';
   const isInteresting = player.status === 'Interesante';
@@ -62,6 +94,52 @@ export const PlayerScoutingCard: React.FC<{ player: Player }> = ({ player }) => 
     updatePlayer(player.id, { notes: note });
     showToast(`Comentari de ${player.full_name} desat`, 'success');
   };
+
+  const handleToggleVoice = async () => {
+    if (isRecording) {
+      const res = await stopRecording();
+      const finalNote = (note || res.transcript || '').trim();
+      if (res.audioBase64) {
+        setVoiceAudioUrl(res.audioBase64);
+        const updatedSports = {
+          ...(player.sports_data || {}),
+          voice_note: {
+            audioBase64: res.audioBase64,
+            transcript: finalNote,
+            duration: res.duration,
+            date: new Date().toISOString()
+          }
+        };
+        updatePlayer(player.id, {
+          notes: finalNote,
+          sports_data: updatedSports
+        });
+        await saveVoiceNote({
+          id: `vn_${player.id}_${Date.now()}`,
+          playerId: player.id,
+          jerseyNumber: player.jersey_number,
+          teamName: player.team?.name,
+          audioBase64: res.audioBase64,
+          transcript: finalNote,
+          createdAt: new Date().toISOString()
+        });
+        showToast(`Nota de veu desada per a ${player.full_name}`, 'success');
+      }
+    } else {
+      await startRecording();
+    }
+  };
+
+  const handleDeleteAudio = () => {
+    resetRecording();
+    setVoiceAudioUrl(null);
+    const updatedSports = { ...(player.sports_data || {}) };
+    delete (updatedSports as any).voice_note;
+    updatePlayer(player.id, { sports_data: updatedSports });
+    showToast(`Nota de veu de ${player.full_name} eliminada`, 'info');
+  };
+
+  const activeAudio = audioUrl || voiceAudioUrl;
 
   return (
     <div
@@ -182,17 +260,47 @@ export const PlayerScoutingCard: React.FC<{ player: Player }> = ({ player }) => 
         </label>
       </div>
 
-      {/* Comentari: es desa en eixir del camp */}
+      {/* Nota de veu si n'hi ha */}
+      {activeAudio && !isRecording && (
+        <div className="mt-2.5">
+          <AudioNotePlayer
+            src={activeAudio}
+            duration={recordingTime}
+            onDelete={handleDeleteAudio}
+            compact
+          />
+        </div>
+      )}
+
+      {/* Comentari i botó de micròfon */}
       <div className="mt-3 flex items-start gap-2">
-        <FileText className="w-3.5 h-3.5 text-slate-500 mt-2 shrink-0" />
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          onBlur={handleNoteBlur}
-          rows={2}
-          placeholder="Comentari / informe tècnic sobre el jugador (es desa en eixir del camp)..."
-          className="w-full bg-slate-950/90 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-sky-500 transition-colors resize-y"
-        />
+        <button
+          type="button"
+          onClick={handleToggleVoice}
+          className={`p-2 rounded-xl border shrink-0 transition-all ${
+            isRecording
+              ? 'bg-rose-600 text-white border-rose-500 animate-pulse'
+              : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-sky-300 hover:border-sky-500/50'
+          }`}
+          title={isRecording ? 'Aturar gravació' : 'Gravar / dictar nota de veu'}
+        >
+          {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+        </button>
+
+        <div className="flex-1 relative">
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            onBlur={handleNoteBlur}
+            rows={2}
+            placeholder={
+              isRecording
+                ? `Dictant veu (${recordingTime}s)...`
+                : "Comentari / informe tècnic sobre el jugador (es desa en eixir del camp)..."
+            }
+            className="w-full bg-slate-950/90 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-sky-500 transition-colors resize-y"
+          />
+        </div>
       </div>
     </div>
   );

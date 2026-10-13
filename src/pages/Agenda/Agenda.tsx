@@ -18,13 +18,16 @@ import {
   AlertTriangle,
   Users,
   ChevronRight,
-  Navigation
+  Navigation,
+  Mic,
+  Star
 } from 'lucide-react';
 import { CustomSelect } from '../../components/ui/Select';
 import type { ScoutingAgendaItem, Player } from '../../types/models';
 import { useSelectors } from '../../hooks/useSelectors';
 import { AgendaPickerModal } from '../../components/agenda/AgendaPickerModal';
 import { PlayerScoutingCard } from '../../components/agenda/PlayerScoutingCard';
+import { QuickDorsalScouting } from '../../components/agenda/QuickDorsalScouting';
 import { AgendaRouteMap, googleMapsRouteUrl, type RouteStop } from '../../components/agenda/AgendaRouteMap';
 import { getAgendaDateTime, isMatchSchedulable, isSameSelector, resolveAgendaMatch } from '../../utils/agenda';
 import { formatAppDate, formatAppDateLong, formatMatchDateTime } from '../../utils/dateFormatter';
@@ -56,6 +59,7 @@ export const Agenda: React.FC = () => {
 
   // Modal de Jugadores / Plantilla del Partido
   const [selectedMatchRosterItem, setSelectedMatchRosterItem] = useState<ScoutingAgendaItem | null>(null);
+  const [modalSubTab, setModalSubTab] = useState<'quick_scout' | 'roster'>('quick_scout');
   const [rosterTab, setRosterTab] = useState<'all' | 'home' | 'away'>('all');
   const [rosterSearch, setRosterSearch] = useState('');
 
@@ -247,6 +251,7 @@ export const Agenda: React.FC = () => {
         key={item.id}
         onClick={() => {
           setSelectedMatchRosterItem(item);
+          setModalSubTab('quick_scout');
           setRosterTab('all');
           setRosterSearch('');
         }}
@@ -397,8 +402,23 @@ export const Agenda: React.FC = () => {
           </div>
         </div>
 
-        {/* Botón de Acción Principal */}
-        <div className="pt-3 border-t border-slate-800">
+        {/* Botó de seguiment ràpid per dorsal i veu + botó de marcar com observat */}
+        <div className="pt-3 border-t border-slate-800 space-y-2">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedMatchRosterItem(item);
+              setModalSubTab('quick_scout');
+              setRosterTab('all');
+              setRosterSearch('');
+            }}
+            className="w-full py-2.5 px-4 bg-gradient-to-r from-sky-600 via-indigo-600 to-sky-700 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-md shadow-sky-950/30 hover:scale-[1.01]"
+          >
+            <Mic className="w-4 h-4 text-sky-200" />
+            <span>Anotar per Dorsal i Veu (Directe)</span>
+          </button>
+
           {!isObserved ? (
             <button
               type="button"
@@ -912,90 +932,175 @@ export const Agenda: React.FC = () => {
                 </div>
               </div>
 
-              {/* Barra de Filtro y Pestañas de Equipos */}
-              <div className="p-4 bg-slate-900/60 border-b border-slate-800/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0">
-                {/* Pestañas de Equipos */}
-                <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => setRosterTab('all')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      rosterTab === 'all'
-                        ? 'bg-sky-600 text-white shadow'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Tots ({homeBD.total + awayBD.total})
-                  </button>
+              {/* Sub-pestanyes del Modal: Anotació per Dorsal i Veu vs Plantilla Completa */}
+              <div className="px-5 pt-3 bg-slate-900/90 border-b border-slate-800 flex items-center gap-2 shrink-0 overflow-x-auto">
+                <button
+                  type="button"
+                  onClick={() => setModalSubTab('quick_scout')}
+                  className={`px-4 py-2.5 rounded-t-xl text-xs font-black transition-all flex items-center gap-2 border-b-2 ${
+                    modalSubTab === 'quick_scout'
+                      ? 'border-[#ff6600] text-white bg-slate-950 shadow-sm'
+                      : 'border-transparent text-slate-400 hover:text-white hover:bg-slate-950/50'
+                  }`}
+                >
+                  <Mic className="w-4 h-4 text-[#ff6600]" />
+                  <span>Anotació per Dorsal i Veu</span>
+                </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setRosterTab('home')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      rosterTab === 'home'
-                        ? 'bg-sky-600 text-white shadow'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <span>{selectedMatchRosterItem.home_team_name.split(' ')[0]} ({homeBD.total})</span>
-                    {homePreselectedCount > 0 && (
-                      <span className="bg-amber-500 text-slate-950 text-[10px] px-1 rounded-full font-black">
-                        ⭐{homePreselectedCount}
-                      </span>
-                    )}
-                  </button>
+                <button
+                  type="button"
+                  onClick={() => setModalSubTab('roster')}
+                  className={`px-4 py-2.5 rounded-t-xl text-xs font-black transition-all flex items-center gap-2 border-b-2 ${
+                    modalSubTab === 'roster'
+                      ? 'border-sky-500 text-white bg-slate-950 shadow-sm'
+                      : 'border-transparent text-slate-400 hover:text-white hover:bg-slate-950/50'
+                  }`}
+                >
+                  <Users className="w-4 h-4 text-sky-400" />
+                  <span>Plantilla Completa ({homeBD.total + awayBD.total})</span>
+                </button>
+              </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setRosterTab('away')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      rosterTab === 'away'
-                        ? 'bg-sky-600 text-white shadow'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <span>{selectedMatchRosterItem.away_team_name.split(' ')[0]} ({awayBD.total})</span>
-                    {awayPreselectedCount > 0 && (
-                      <span className="bg-amber-500 text-slate-950 text-[10px] px-1 rounded-full font-black">
-                        ⭐{awayPreselectedCount}
-                      </span>
-                    )}
-                  </button>
-                </div>
-
-                {/* Input de Búsqueda de Jugador */}
-                <div className="relative w-full sm:w-64">
-                  <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    placeholder="Cercar dorsal, nom, posició..."
-                    value={rosterSearch}
-                    onChange={(e) => setRosterSearch(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#ff6600]"
+              {/* Contingut del Modal segons la pestanya activa */}
+              {modalSubTab === 'quick_scout' ? (
+                <div className="p-4 sm:p-6 overflow-y-auto flex-1 custom-scrollbar space-y-6">
+                  {/* Formulari de Seguiment per Dorsal, Veu, Interessant i Estrelles */}
+                  <QuickDorsalScouting
+                    agendaItem={selectedMatchRosterItem}
+                    homePlayers={homeBD.playersList}
+                    awayPlayers={awayBD.playersList}
                   />
-                  {rosterSearch && (
-                    <button
-                      type="button"
-                      onClick={() => setRosterSearch('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
 
-              {/* Contenido / Listado de Jugadores con Informe y Preselección */}
-              <div className="p-4 sm:p-6 overflow-y-auto flex-1 custom-scrollbar space-y-3">
-                {activePlayers.length === 0 ? (
-                  <div className="text-center py-12 text-slate-500 text-xs">
-                    <Users className="w-8 h-8 mx-auto mb-2 text-slate-600" />
-                    <p className="font-bold">No s'han trobat jugadors per a aquesta selecció.</p>
+                  {/* Llistat de Jugadors Ja Valorats o Destacats en aquest Partit */}
+                  <div className="pt-2 border-t border-slate-800">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
+                        <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                        <span>Jugadors valorats / destacats en aquest partit:</span>
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => setModalSubTab('roster')}
+                        className="text-xs text-sky-400 hover:underline font-bold"
+                      >
+                        Veure plantilla completa ({homeBD.total + awayBD.total}) →
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {(() => {
+                        const highlighted = [...homeBD.playersList, ...awayBD.playersList].filter(
+                          (p) =>
+                            p.status === 'Interesante' ||
+                            p.status === 'Preseleccionado' ||
+                            (p.rating && p.rating > 0) ||
+                            (p.notes && p.notes.trim().length > 0) ||
+                            (p.sports_data as any)?.voice_note
+                        );
+
+                        if (highlighted.length === 0) {
+                          return (
+                            <div className="bg-slate-900/50 border border-slate-800/60 rounded-xl p-4 text-center text-xs text-slate-500">
+                              Encara no hi ha jugadors valorats o amb notes en este partit. Fes servir el panell de seguiment per dorsal i veu superior per a començar!
+                            </div>
+                          );
+                        }
+
+                        return highlighted.map((player) => (
+                          <PlayerScoutingCard key={player.id} player={player} />
+                        ));
+                      })()}
+                    </div>
                   </div>
-                ) : (
-                  activePlayers.map((player) => <PlayerScoutingCard key={player.id} player={player} />)
-                )}
-              </div>
+                </div>
+              ) : (
+                <>
+                  {/* Barra de Filtro y Pestañas de Equipos */}
+                  <div className="p-4 bg-slate-900/60 border-b border-slate-800/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0">
+                    {/* Pestañas de Equipos */}
+                    <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => setRosterTab('all')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          rosterTab === 'all'
+                            ? 'bg-sky-600 text-white shadow'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Tots ({homeBD.total + awayBD.total})
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setRosterTab('home')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                          rosterTab === 'home'
+                            ? 'bg-sky-600 text-white shadow'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <span>{selectedMatchRosterItem.home_team_name.split(' ')[0]} ({homeBD.total})</span>
+                        {homePreselectedCount > 0 && (
+                          <span className="bg-amber-500 text-slate-950 text-[10px] px-1 rounded-full font-black">
+                            ⭐{homePreselectedCount}
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setRosterTab('away')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                          rosterTab === 'away'
+                            ? 'bg-sky-600 text-white shadow'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <span>{selectedMatchRosterItem.away_team_name.split(' ')[0]} ({awayBD.total})</span>
+                        {awayPreselectedCount > 0 && (
+                          <span className="bg-amber-500 text-slate-950 text-[10px] px-1 rounded-full font-black">
+                            ⭐{awayPreselectedCount}
+                          </span>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Input de Búsqueda de Jugador */}
+                    <div className="relative w-full sm:w-64">
+                      <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Cercar dorsal, nom, posició..."
+                        value={rosterSearch}
+                        onChange={(e) => setRosterSearch(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#ff6600]"
+                      />
+                      {rosterSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setRosterSearch('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Contenido / Listado de Jugadores con Informe y Preselección */}
+                  <div className="p-4 sm:p-6 overflow-y-auto flex-1 custom-scrollbar space-y-3">
+                    {activePlayers.length === 0 ? (
+                      <div className="text-center py-12 text-slate-500 text-xs">
+                        <Users className="w-8 h-8 mx-auto mb-2 text-slate-600" />
+                        <p className="font-bold">No s'han trobat jugadors per a aquesta selecció.</p>
+                      </div>
+                    ) : (
+                      activePlayers.map((player) => <PlayerScoutingCard key={player.id} player={player} />)
+                    )}
+                  </div>
+                </>
+              )}
 
               {/* Pie del Modal */}
               <div className="p-4 border-t border-slate-800 bg-slate-950 flex items-center justify-between">

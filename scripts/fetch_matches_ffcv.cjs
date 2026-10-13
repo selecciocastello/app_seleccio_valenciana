@@ -125,38 +125,16 @@ function loadEnv() {
   return env;
 }
 
-async function detectSegonaInfantil() {
-  try {
-    const data = await fetchJson('https://ffcv.es/competiciones/api/filtros/competiciones_fetch.php?cod_temporada=22');
-    if (!data || !Array.isArray(data.competiciones)) return null;
+// Segona Infantil Castelló: los grupos (hasta 7) se cargan dinámicamente desde la API
+const SEGONA_INFANTIL_CASTELLO = { id: '905431645', name: 'Segona Infantil Castelló' };
 
-    const segonaComp = data.competiciones.find(c => {
-      const n = (c.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      return (n.includes('segona') || n.includes('segunda') || n.includes('2a') || n.includes('2ª') || n.includes('2 regional')) &&
-             n.includes('infantil') && !n.includes('futsal') && !n.includes('platja');
-    });
-
-    if (!segonaComp) return null;
-
-    const grpData = await fetchJson(`https://ffcv.es/competiciones/api/filtros/grupos_fetch.php?cod_competicion=${encodeURIComponent(segonaComp.codigo)}`);
-    if (!grpData || !Array.isArray(grpData.grupos)) return null;
-
-    // Grupos 1 al 4 de Castelló
-    const castellonGroups = grpData.grupos.filter(g => {
-      const m = g.nombre.match(/\b([1-4])\b/) || g.nombre.match(/grup[^\d]*([1-4])/i);
-      return Boolean(m);
-    });
-
-    if (castellonGroups.length === 0) return null;
-
-    return {
-      id: String(segonaComp.codigo),
-      name: segonaComp.nombre,
-      groups: castellonGroups.map(g => ({ id: String(g.codigo), name: g.nombre }))
-    };
-  } catch (e) {
-    return null;
-  }
+async function loadSegonaInfantil() {
+  const grpData = await fetchJson(`https://ffcv.es/competiciones/api/filtros/grupos_fetch.php?cod_competicion=${encodeURIComponent(SEGONA_INFANTIL_CASTELLO.id)}`);
+  const grupos = Array.isArray(grpData?.grupos) ? grpData.grupos : [];
+  return {
+    ...SEGONA_INFANTIL_CASTELLO,
+    groups: grupos.map(g => ({ id: String(g.codigo), name: g.nombre }))
+  };
 }
 
 async function main() {
@@ -164,13 +142,12 @@ async function main() {
   const allMatches = [];
 
   const competitions = [...TARGET_COMPETITIONS];
-  const segona = await detectSegonaInfantil();
-  if (segona && segona.groups.length > 0) {
-    console.log(`\n🎉 ¡Detectada ${segona.name} (${segona.id}) con ${segona.groups.length} grupos de Castelló!`);
+  const segona = await loadSegonaInfantil();
+  if (segona.groups.length > 0) {
+    console.log(`\n✅ ${segona.name} (${segona.id}): ${segona.groups.length} grupos (${segona.groups.map(g => g.name).join(', ')})`);
     competitions.push(segona);
   } else {
-    console.log('\n⏳ Segona Regional Infantil (Grupos 1 al 4 de Castelló):');
-    console.log('   La FFCV aún no ha publicado los calendarios. El sistema los revisará automáticamente cada semana y los incorporará en cuanto FFCV los publique.');
+    console.warn(`\n⚠️  ${segona.name} (${segona.id}): no se han podido obtener los grupos de la FFCV. Se omite en esta ejecución.`);
   }
 
   for (const comp of competitions) {

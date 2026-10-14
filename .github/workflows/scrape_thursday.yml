@@ -40,14 +40,23 @@ jobs:
         run: node scripts/scrape_ffcv_infantil.cjs
 
       - name: 💾 Guardar datos JSON en el repositorio (Commit & Push)
-        if: ${{ !cancelled() }}
+        # always(): las fotos y los JSON se suben aunque el scraping falle o se agote el tiempo,
+        # porque Supabase ya puede apuntar a las fotos nuevas de public/players
+        if: ${{ always() }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add src/data/*.json scripts/fields_cache.json public/players || true
           if git diff --staged --quiet; then
             echo "No hay cambios nuevos en los datos locales."
-          else
-            git commit -m "chore(data): actualización automática de partidos y jugadores"
-            git push origin HEAD:${{ github.ref_name }}
+            exit 0
           fi
+          git commit -m "chore(data): actualización automática de partidos y jugadores"
+          # Si alguien ha hecho push durante el scraping, se integra antes de subir (si no, el push
+          # se rechaza y las fotos nuevas se pierden)
+          for attempt in 1 2 3; do
+            git pull --rebase -X theirs origin ${{ github.ref_name }} && git push origin HEAD:${{ github.ref_name }} && exit 0
+            echo "Push rechazado (intento $attempt), reintentando..."
+            sleep 10
+          done
+          exit 1

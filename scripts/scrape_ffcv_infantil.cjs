@@ -15,10 +15,20 @@
  *   --players-only        Solo raspar plantillas, jugadores e historial
  *   --limit-teams <n>     Limitar número de equipos por grupo para pruebas
  *   --limit-players <n>   Limitar número de jugadores por equipo para pruebas
+ *   --all-matches         Volver a descargar también las jornadas ya jugadas
  *
  * Todos los datos se obtienen de la API JSON de ffcv.es (la misma que usa su web) a
  * través de un navegador Playwright (ver ffcv_client.cjs). La FFCV limita a ~240 peticiones/minuto por IP (HTTP 429
  * con retry_after), así que todas las peticiones pasan por un limitador global.
+ *
+ * Descarga incremental:
+ *  - Partidos: solo se descargan las jornadas pendientes a fecha del scraping; las ya
+ *    jugadas (todos sus partidos finalizados y con fecha pasada) se conservan tal cual.
+ *  - Jugadores: los nuevos se descargan completos (ficha + historial); de los que ya
+ *    existen solo se pide la ficha (equipo, dorsal, foto, estadísticas) y en Supabase
+ *    solo se escriben los que han cambiado. Los que ya no están en ninguna plantilla se borran.
+ *  - Todo lo que falla (grupo, jornada, equipo o jugador) se apunta y se reintenta al
+ *    final de la descarga.
  */
 
 const fs = require('fs');
@@ -69,6 +79,10 @@ const limitTeamsIdx = args.indexOf('--limit-teams');
 const limitTeams = limitTeamsIdx !== -1 ? parseInt(args[limitTeamsIdx + 1], 10) : Infinity;
 const limitPlayersIdx = args.indexOf('--limit-players');
 const limitPlayers = limitPlayersIdx !== -1 ? parseInt(args[limitPlayersIdx + 1], 10) : Infinity;
+const refreshAllMatches = args.includes('--all-matches');
+
+const RETRY_ROUNDS = 3;
+const RETRY_PAUSE_MS = 20000;
 
 // ── Cliente HTTP de la API FFCV con límite de peticiones ─────────────────────
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -106,6 +120,59 @@ async function mapWithConcurrency(items, concurrency, fn) {
   });
   await Promise.all(workers);
   return results;
+}
+
+// ── Cola de reintentos ───────────────────────────────────────────────────────
+// Lo que falla durante la descarga se apunta aquí y se vuelve a procesar al final.
+// retry() devuelve true si ha ido bien; giveUp() se llama si sigue fallando tras todas las rondas.
+let deferred = [];
+
+function defer(label, retry, giveUp = () => {}) {
+  deferred.push({ label, retry, giveUp });
+}
+
+/** Reintenta lo apuntado (las tareas pueden apuntar más). Devuelve las etiquetas que siguen fallando. */
+async function runDeferred() {
+  for (let round = 1; round <= RETRY_ROUNDS && deferred.length > 0; round++) {
+    const tasks = deferred;
+    deferred = [];
+    console.log(`\n🔁 Reintento ${round}/${RETRY_ROUNDS}: ${tasks.length} tarea(s) que habían fallado. Esperando ${RETRY_PAUSE_MS * round / 1000}s...`);
+    await sleep(RETRY_PAUSE_MS * round);
+    for (const task of tasks) {
+      let ok = false;
+      try {
+        ok = await task.retry();
+      } catch (err) {
+        console.warn(`     ⚠️ ${task.label}: ${err.message}`);
+      }
+      console.log(`     ${ok ? '✅' : '⚠️'} ${task.label}${ok ? '' : ': sigue fallando'}`);
+      if (!ok) deferred.push(task);
+    }
+  }
+  const failed = deferred;
+  deferred = [];
+  for (const task of failed) task.giveUp();
+  return failed.map((t) => t.label);
+}
+
+/** Fecha de hoy (YYYY-MM-DD) en hora peninsular. */
+function todayInSpain() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+}
+
+/** JSON con las claves ordenadas, para comparar valores jsonb de la BD con los nuevos. */
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+/** "4 - 1" -> [4, 1]; null si el partido no tiene resultado. */
+function parseResult(resultado) {
+  const m = String(resultado || '').match(/^\s*(\d+)\s*-\s*(\d+)\s*$/);
+  return m ? [parseInt(m[1], 10), parseInt(m[2], 10)] : null;
 }
 
 function formatLogoUrl(url) {
@@ -491,20 +558,47 @@ async function reconcileStalePlayers(supabase, scrapedIds, teamNameToId) {
   console.log(`   ✅ ${stale.length} jugadores antiguos: ${moved} protegidos actualizados a su equipo actual, ${markedStale} protegidos marcados como no vigentes, ${deleted} borrados.`);
 }
 
-// Intentar guardar en Supabase si está disponible
-async function trySaveToSupabase(matches, teams, players, { playersComplete = false } = {}) {
+/** Cliente de Supabase con la service role, o null si no está configurado. */
+function getSupabase() {
   const env = loadEnv();
   const supabaseUrl = env.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const supabaseKey = env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('your-supabase')) return null;
+  const { createClient } = require('@supabase/supabase-js');
+  return createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
+}
 
-  if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('your-supabase')) {
+// Columnas de players que escribe el scraper y se comparan para saber si un jugador ha cambiado
+const PLAYER_SYNC_FIELDS = [
+  'first_name', 'last_name', 'position', 'jersey_number', 'photo_url', 'team_id', 'city', 'province',
+  'is_stale', 'sports_data', 'source_url', 'infantil_year', 'age', 'history'
+];
+
+/** Map<source_player_id, fila> de los jugadores del scraper que ya están en la BD, o null si no se pueden leer. */
+async function loadDbPlayers(supabase) {
+  if (!supabase) return null;
+  try {
+    const rows = await selectAll(supabase, 'players', ['id', 'source_player_id', ...PLAYER_SYNC_FIELDS].join(', '), (q) => q.eq('source', 'ffcv_scraping'));
+    return new Map(rows.filter((r) => r.source_player_id).map((r) => [String(r.source_player_id), r]));
+  } catch (err) {
+    console.warn(`⚠️ No se han podido leer los jugadores de Supabase (${err.message}). Se descargarán todos completos.`);
+    return null;
+  }
+}
+
+/**
+ * Sincroniza con Supabase. Solo se escriben los partidos descargados en esta ejecución
+ * y los jugadores nuevos o con algún dato cambiado.
+ *  - dbPlayers: jugadores que ya había en la BD (null si no se pudieron leer: se escriben todos)
+ *  - keptPlayerIds: jugadores de las plantillas que no se han podido descargar (no se tocan ni se borran)
+ */
+async function trySaveToSupabase(supabase, matches, teams, players, { playersComplete = false, dbPlayers = null, keptPlayerIds = [] } = {}) {
+  if (!supabase) {
     console.log('ℹ️  Supabase no configurado en .env (se omite la sincronización remota a BD).');
     return;
   }
 
   try {
-    const { createClient } = require('@supabase/supabase-js');
-    const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
     console.log('\n📡 Sincronizando con Supabase...');
 
     // 1. Upsert Teams (Deduplicados por nombre)
@@ -539,7 +633,7 @@ async function trySaveToSupabase(matches, teams, players, { playersComplete = fa
       console.log(`   ✅ ${tSuccess}/${dbTeams.length} equipos sincronizados en Supabase.`);
     }
 
-    // 2. Upsert Matches (Deduplicados por source_match_id)
+    // 2. Upsert Matches (solo los descargados en esta ejecución; deduplicados por source_match_id)
     if (matches && matches.length > 0) {
       const matchesMap = new Map();
       for (const m of matches) {
@@ -584,10 +678,12 @@ async function trySaveToSupabase(matches, teams, players, { playersComplete = fa
         if (mErr) console.warn(`   ⚠️ Error sincronizando lote de partidos (${i}-${i + chunk.length}):`, mErr.message);
         else mSuccess += chunk.length;
       }
-      console.log(`   ✅ ${mSuccess}/${dbMatches.length} partidos sincronizados en Supabase.`);
+      console.log(`   ✅ ${mSuccess}/${dbMatches.length} partidos pendientes sincronizados en Supabase.`);
+    } else {
+      console.log('   ℹ️  No hay partidos nuevos que sincronizar.');
     }
 
-    // 3. Upsert Players (Deduplicados por source_player_id)
+    // 3. Players: altas y cambios (deduplicados por source_player_id)
     if (players && players.length > 0) {
       const { data: dbTeamsList } = await supabase.from('teams').select('id, name');
       const teamNameToId = new Map();
@@ -645,24 +741,44 @@ async function trySaveToSupabase(matches, teams, players, { playersComplete = fa
           scraped_at: p.scraped_at || new Date().toISOString()
         });
       }
-      const dbPlayers = Array.from(playersMap.values());
+
+      // Solo se escriben los jugadores nuevos o con algún dato distinto al de la BD
+      let created = 0;
+      let changed = 0;
+      const toWrite = [];
+      for (const [sourcePlayerId, row] of playersMap) {
+        const current = dbPlayers?.get(sourcePlayerId);
+        if (!current) {
+          created++;
+          toWrite.push(row);
+        } else if (PLAYER_SYNC_FIELDS.some((f) => stableStringify(row[f]) !== stableStringify(current[f]))) {
+          changed++;
+          toWrite.push(row);
+        }
+      }
+
       const chunkSize = 100;
       let pSuccess = 0;
-      for (let i = 0; i < dbPlayers.length; i += chunkSize) {
-        const chunk = dbPlayers.slice(i, i + chunkSize);
+      for (let i = 0; i < toWrite.length; i += chunkSize) {
+        const chunk = toWrite.slice(i, i + chunkSize);
         const { error: pErr } = await supabase.from('players').upsert(chunk, { onConflict: 'source,source_player_id' });
         if (pErr) console.warn(`   ⚠️ Error sincronizando lote de jugadores (${i}-${i + chunk.length}):`, pErr.message);
         else pSuccess += chunk.length;
       }
-      console.log(`   ✅ ${pSuccess}/${dbPlayers.length} jugadores sincronizados en Supabase.`);
+      if (dbPlayers) {
+        console.log(`   ✅ Jugadores: ${created} nuevos, ${changed} con cambios, ${playersMap.size - created - changed} sin cambios (${pSuccess}/${toWrite.length} escritos).`);
+      } else {
+        console.log(`   ✅ ${pSuccess}/${toWrite.length} jugadores sincronizados en Supabase.`);
+      }
       console.log(`   🔒 ${preservedCount} posiciones editadas a mano conservadas.`);
 
       if (!playersComplete) {
         console.log('   ℹ️  Descarga de plantillas incompleta o limitada: no se revisan jugadores antiguos.');
-      } else if (pSuccess < dbPlayers.length) {
+      } else if (pSuccess < toWrite.length) {
         console.warn('   ⚠️ Hubo errores sincronizando jugadores: no se revisan jugadores antiguos.');
       } else {
-        await reconcileStalePlayers(supabase, new Set(playersMap.keys()), teamNameToId);
+        const rosterIds = new Set([...playersMap.keys(), ...keptPlayerIds.map(String)]);
+        await reconcileStalePlayers(supabase, rosterIds, teamNameToId);
       }
     }
   } catch (err) {
@@ -764,20 +880,27 @@ function parseBirthYear(playerApi, historyApi) {
   return m ? parseInt(m[1], 10) : null;
 }
 
-/** Obtiene ficha + historial de un jugador y construye su registro. */
-async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo, comp, grp }) {
+/**
+ * Obtiene ficha + historial de un jugador y construye su registro.
+ * Si ya lo conocemos (`known`) y tiene historial, solo se pide la ficha: el historial y
+ * el año de nacimiento no cambian durante la temporada.
+ */
+async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo, comp, grp, known }) {
   const playerUrl = `https://ffcv.es/competiciones/jugadores/jugador.php?codigo=${encodeURIComponent(codJugador)}&cod_competicion=${encodeURIComponent(comp.id)}&cod_grupo=${encodeURIComponent(grp.id)}&cod_temporada=${encodeURIComponent(TARGET_TEMPORADA)}`;
   const cod = encodeURIComponent(codJugador);
   const temp = encodeURIComponent(TARGET_TEMPORADA);
+  const needsHistory = !known || !Array.isArray(known.history) || known.history.length === 0;
 
   const playerApi = await ffcvFetch(`jugadores/jugador_api.php?codigo=${cod}&cod_temporada=${temp}`);
-  const historyApi = await ffcvFetch(`jugadores/historial_deportivo.php?cod_licencia=${cod}&cod_temporada=${temp}`);
+  const historyApi = needsHistory
+    ? await ffcvFetch(`jugadores/historial_deportivo.php?cod_licencia=${cod}&cod_temporada=${temp}`)
+    : null;
 
   const parsedName = parsePlayerName(nombreJugador);
-  const history = buildHistory(historyApi);
+  const history = needsHistory ? buildHistory(historyApi) : known.history;
   const hasProfile = isValidProfile(playerApi);
   const age = hasProfile ? parseInt(playerApi.edad, 10) : NaN;
-  const birthYear = parseBirthYear(playerApi, historyApi);
+  const birthYear = parseBirthYear(playerApi, historyApi) ?? known?.birth_year ?? null;
 
   return {
     id: `ffcv-p-${codJugador}`,
@@ -789,7 +912,7 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
     dorsal: hasProfile ? parseDorsal(playerApi.dorsal_jugador) : null,
     age: isNaN(age) ? null : age,
     birth_year: birthYear,
-    birth_date: parseDate(historyApi?.fecha_nacimiento),
+    birth_date: needsHistory ? parseDate(historyApi?.fecha_nacimiento) : (known.birth_date ?? null),
     photo_url: hasProfile ? toPhotoUrl(playerApi.foto, codJugador) : null,
     team: nombreEquipo,
     team_id: `ffcv-team-${codEquipo}`,
@@ -800,8 +923,17 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
     sports_data: hasProfile ? buildStats(playerApi) : {},
     source_url: playerUrl,
     scraped_at: new Date().toISOString(),
-    _incomplete: !hasProfile || !historyApi
+    _incomplete: !hasProfile || (needsHistory && !historyApi)
   };
+}
+
+function readJsonArray(filePath) {
+  try {
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return Array.isArray(data) ? data : [];
+  } catch (e) {
+    return [];
+  }
 }
 
 (async () => {
@@ -810,15 +942,23 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
   console.log('=====================================================');
   console.log(`Temporada objetivo: 2026-2027 (código ${TARGET_TEMPORADA})`);
   const startedAt = Date.now();
+  const today = todayInSpain();
+  console.log(`Fecha del scraping: ${today}`);
 
+  const supabase = getSupabase();
   const fieldsCache = new Map(); // codcampo -> info campo (coordenadas, dirección, etc.)
-  const allMatches = [];
-  const allTeams = [];
-  const allPlayers = [];
+  // Partidos por jornada en orden de descarga: { matches, refreshed } (refreshed = descargados ahora)
+  const matchesByJornada = new Map();
+  const teamsByCode = new Map();
+  const playersById = new Map();
+  const keptPlayerIds = []; // en plantilla pero sin poder descargar: se dejan como están en la BD
+  const notUpdated = [];
   // Solo si se recorren todas las plantillas sin fallos se revisan/borran jugadores antiguos
   let playersComplete = !matchesOnly && limitTeams === Infinity && limitPlayers === Infinity;
   const dataDir = path.join(__dirname, '..', 'src', 'data');
   ensureDir(dataDir);
+
+  const currentMatches = () => [...matchesByJornada.values()].flatMap((v) => v.matches);
 
   try {
     const competitionsToScrape = [...TARGET_COMPETITIONS];
@@ -826,250 +966,326 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
     // ── 1. RASPADO DE PARTIDOS / AGENDA ──────────────────────────────────────────
     if (!playersOnly) {
       console.log('\n========================================');
-      console.log('📅 EXTRACCIÓN DE PARTIDOS Y AGENDA CON CAMPOS');
+      console.log('📅 EXTRACCIÓN DE PARTIDOS PENDIENTES Y AGENDA CON CAMPOS');
       console.log('========================================');
 
-      // Partidos de la ejecución anterior, para no perder jornadas si la FFCV falla
-      let previousMatches = [];
-      try {
-        previousMatches = JSON.parse(fs.readFileSync(path.join(dataDir, 'scraped_matches.json'), 'utf8'));
-        if (!Array.isArray(previousMatches)) previousMatches = [];
-      } catch (e) {}
-      const failedJornadas = [];
-      const failedGroups = [];
-      const stillFailed = [];
+      // Partidos de la ejecución anterior: las jornadas ya jugadas no se vuelven a pedir y,
+      // si la FFCV falla, se conservan en vez de perderlas.
+      const previousMatches = readJsonArray(path.join(dataDir, 'scraped_matches.json'));
+      const prevByJornada = new Map();
+      for (const m of previousMatches) {
+        const key = `${m.cod_grupo}|${m.matchday}`;
+        if (!prevByJornada.has(key)) prevByJornada.set(key, []);
+        prevByJornada.get(key).push(m);
+      }
+      // Jugado = con resultado y fecha anterior a hoy. Los aplazados/suspendidos se siguen actualizando.
+      const isPlayed = (m) => ['Jugado', 'Finalizado'].includes(m.status) && m.match_date && m.match_date < today;
+      let keptJornadas = 0;
+      let refreshedJornadas = 0;
+
+      /** Partidos de una jornada, o null si la FFCV no ha respondido. */
+      const scrapeJornada = async (comp, grp, codJornada, jornadaNombre) => {
+        const partidosData = await ffcvFetch(`partidos/resultados_por_grupo_jornada_data.php?cod_grupo=${encodeURIComponent(grp.id)}&cod_jornada=${encodeURIComponent(codJornada)}`);
+        if (!partidosData) return null;
+        const partidosList = Array.isArray(partidosData.partidos) ? partidosData.partidos : [];
+        const jornadaMatches = [];
+
+        // Ficha detallada de cada partido (árbitros, código de campo, hora confirmada)
+        const details = await mapWithConcurrency(partidosList, 3, (p) =>
+          p.codacta ? ffcvFetch(`partidos/ficha_partido_ajax.php?cod_partido=${encodeURIComponent(p.codacta)}`) : null
+        );
+
+        for (let i = 0; i < partidosList.length; i++) {
+          const p = partidosList[i];
+          const matchDetail = details[i];
+          const codigoCampo = matchDetail?.codigo_campo || null;
+          const fieldName = matchDetail?.campo || p.campo || 'Por determinar';
+
+          // Coordenadas de la instalación/campo (con cache)
+          if (codigoCampo && !fieldsCache.has(codigoCampo)) {
+            const fieldData = await ffcvFetch(`instalaciones/datos_campo.php?Codigo_Campo=${encodeURIComponent(codigoCampo)}`);
+            if (fieldData) {
+              fieldsCache.set(codigoCampo, {
+                codigo_campo: codigoCampo,
+                nombre: fieldData.nombre_campo || fieldName,
+                direccion: fieldData.direccion || null,
+                localidad: fieldData.localidad || null,
+                provincia: fieldData.provincia || 'Castelló',
+                codigo_postal: fieldData.codigo_postal || null,
+                superficie: fieldData.superficie_juego || null,
+                latitude: fieldData.latitud ? parseFloat(fieldData.latitud) : null,
+                longitude: fieldData.longitud ? parseFloat(fieldData.longitud) : null,
+              });
+            }
+          }
+
+          const fieldCoords = codigoCampo ? fieldsCache.get(codigoCampo) : null;
+          const fechaPart = parseDate(matchDetail?.fecha || p.fecha);
+          const horaPart = parseTime(matchDetail?.hora || p.hora);
+          const score = parseResult(p.resultado);
+
+          jornadaMatches.push({
+            id: `ffcv-acta-${p.codacta || `${p.cod_equipo_local}-${p.cod_equipo_visitante}-${fechaPart}`}`,
+            codacta: p.codacta || null,
+            competition: comp.name,
+            cod_competicion: comp.id,
+            group: grp.name,
+            cod_grupo: grp.id,
+            matchday: jornadaNombre,
+            match_date: fechaPart,
+            time: horaPart,
+            status: p.estado === '5' ? 'Suspendido' : (score || p.estado === '1' ? 'Finalizado' : 'Programado'),
+            home_team: p.local,
+            home_team_id: p.cod_equipo_local,
+            home_crest: formatLogoUrl(p.escudo_local || matchDetail?.escudo_local),
+            away_team: p.visitante,
+            away_team_id: p.cod_equipo_visitante,
+            away_crest: formatLogoUrl(p.escudo_visitante || matchDetail?.escudo_visitante),
+            home_score: score ? score[0] : null,
+            away_score: score ? score[1] : null,
+            field_name: fieldName,
+            field_code: codigoCampo,
+            address: fieldCoords?.direccion || null,
+            city: fieldCoords?.localidad || null,
+            province: fieldCoords?.provincia || 'Castelló',
+            latitude: fieldCoords?.latitude || null,
+            longitude: fieldCoords?.longitude || null,
+            referees: Array.isArray(matchDetail?.arbitros_partido) ? matchDetail.arbitros_partido.map(a => a.nombre).filter(Boolean) : []
+          });
+        }
+        return jornadaMatches;
+      };
+
+      const processJornada = async (comp, grp, jor) => {
+        const codJornada = jor.codjornada || jor.nombre;
+        const jornadaNombre = `Jornada ${jor.nombre || codJornada}`;
+        const key = `${grp.id}|${jornadaNombre}`;
+        const prev = prevByJornada.get(key) || [];
+
+        if (!refreshAllMatches && prev.length > 0 && prev.every(isPlayed)) {
+          matchesByJornada.set(key, { matches: prev, refreshed: false });
+          keptJornadas++;
+          console.log(`       ${jornadaNombre}: ya jugada, se conservan sus ${prev.length} partidos`);
+          return;
+        }
+
+        // Mientras no se descargue, la jornada conserva los partidos anteriores
+        matchesByJornada.set(key, { matches: prev, refreshed: false });
+        const label = `Partidos ${comp.name} ${grp.name} - ${jornadaNombre}`;
+        const run = async () => {
+          const jornadaMatches = await scrapeJornada(comp, grp, codJornada, jornadaNombre);
+          if (!jornadaMatches) return false;
+          matchesByJornada.set(key, { matches: jornadaMatches, refreshed: true });
+          refreshedJornadas++;
+          return true;
+        };
+        if (await run()) {
+          console.log(`       ${jornadaNombre}: ${matchesByJornada.get(key).matches.length} partidos actualizados`);
+        } else {
+          console.log(`       ${jornadaNombre}: sin respuesta de la FFCV, se reintentará al final`);
+          defer(label, run, () => notUpdated.push(label));
+        }
+      };
+
+      /** Jornadas de un grupo. false si la FFCV no ha devuelto la lista de jornadas. */
+      const processGroupMatches = async (comp, grp) => {
+        const jornadasData = await ffcvFetch(`filtros/jornadas_fetch.php?cod_grupo=${encodeURIComponent(grp.id)}`);
+        if (!jornadasData) return false;
+        matchesByJornada.delete(`${grp.id}|*`);
+        const jornadas = Array.isArray(jornadasData.jornadas) ? jornadasData.jornadas : [];
+        console.log(`     Total jornadas: ${jornadas.length}`);
+        for (const jor of jornadas) await processJornada(comp, grp, jor);
+        return true;
+      };
 
       for (const comp of competitionsToScrape) {
         console.log(`\n🏆 ${comp.name} (${comp.id})`);
-
         for (const grp of comp.groups) {
           console.log(`  🔹 ${grp.name} (${grp.id})`);
-
-          const jornadasData = await ffcvFetch(`filtros/jornadas_fetch.php?cod_grupo=${encodeURIComponent(grp.id)}`);
-          if (!jornadasData) {
-            const kept = previousMatches.filter(m => m.cod_grupo === grp.id);
-            allMatches.push(...kept);
-            failedGroups.push(`${comp.name} ${grp.name}`);
-            console.log(`     ⚠️ No se han podido obtener las jornadas. Se conservan ${kept.length} partidos anteriores.`);
+          if (await processGroupMatches(comp, grp)) {
+            console.log(`     ✅ Grupo ${grp.name} completado.`);
             continue;
           }
-          const jornadas = Array.isArray(jornadasData.jornadas) ? jornadasData.jornadas : [];
-          console.log(`     Total jornadas: ${jornadas.length}`);
-
-          /** Partidos de una jornada, o null si la FFCV no ha respondido. */
-          const scrapeJornada = async (codJornada, jornadaNombre) => {
-            const partidosData = await ffcvFetch(`partidos/resultados_por_grupo_jornada_data.php?cod_grupo=${encodeURIComponent(grp.id)}&cod_jornada=${encodeURIComponent(codJornada)}`);
-            if (!partidosData) return null;
-            const partidosList = Array.isArray(partidosData.partidos) ? partidosData.partidos : [];
-            const jornadaMatches = [];
-
-            // Ficha detallada de cada partido (árbitros, código de campo, hora confirmada)
-            const details = await mapWithConcurrency(partidosList, 3, (p) =>
-              p.codacta ? ffcvFetch(`partidos/ficha_partido_ajax.php?cod_partido=${encodeURIComponent(p.codacta)}`) : null
-            );
-
-            for (let i = 0; i < partidosList.length; i++) {
-              const p = partidosList[i];
-              const matchDetail = details[i];
-              const codigoCampo = matchDetail?.codigo_campo || null;
-              const fieldName = matchDetail?.campo || p.campo || 'Por determinar';
-
-              // Coordenadas de la instalación/campo (con cache)
-              if (codigoCampo && !fieldsCache.has(codigoCampo)) {
-                const fieldData = await ffcvFetch(`instalaciones/datos_campo.php?Codigo_Campo=${encodeURIComponent(codigoCampo)}`);
-                if (fieldData) {
-                  fieldsCache.set(codigoCampo, {
-                    codigo_campo: codigoCampo,
-                    nombre: fieldData.nombre_campo || fieldName,
-                    direccion: fieldData.direccion || null,
-                    localidad: fieldData.localidad || null,
-                    provincia: fieldData.provincia || 'Castelló',
-                    codigo_postal: fieldData.codigo_postal || null,
-                    superficie: fieldData.superficie_juego || null,
-                    latitude: fieldData.latitud ? parseFloat(fieldData.latitud) : null,
-                    longitude: fieldData.longitud ? parseFloat(fieldData.longitud) : null,
-                  });
-                }
-              }
-
-              const fieldCoords = codigoCampo ? fieldsCache.get(codigoCampo) : null;
-              const fechaPart = parseDate(matchDetail?.fecha || p.fecha);
-              const horaPart = parseTime(matchDetail?.hora || p.hora);
-
-              jornadaMatches.push({
-                id: `ffcv-acta-${p.codacta || `${p.cod_equipo_local}-${p.cod_equipo_visitante}-${fechaPart}`}`,
-                codacta: p.codacta || null,
-                competition: comp.name,
-                cod_competicion: comp.id,
-                group: grp.name,
-                cod_grupo: grp.id,
-                matchday: jornadaNombre,
-                match_date: fechaPart,
-                time: horaPart,
-                status: p.resultado && p.resultado !== '0' ? 'Jugado' : (p.estado === '5' ? 'Suspendido' : 'Programado'),
-                home_team: p.local,
-                home_team_id: p.cod_equipo_local,
-                home_crest: formatLogoUrl(p.escudo_local || matchDetail?.escudo_local),
-                away_team: p.visitante,
-                away_team_id: p.cod_equipo_visitante,
-                away_crest: formatLogoUrl(p.escudo_visitante || matchDetail?.escudo_visitante),
-                home_score: p.goles_local != null && p.goles_local !== '' ? parseInt(p.goles_local, 10) : null,
-                away_score: p.goles_visitante != null && p.goles_visitante !== '' ? parseInt(p.goles_visitante, 10) : null,
-                field_name: fieldName,
-                field_code: codigoCampo,
-                address: fieldCoords?.direccion || null,
-                city: fieldCoords?.localidad || null,
-                province: fieldCoords?.provincia || 'Castelló',
-                latitude: fieldCoords?.latitude || null,
-                longitude: fieldCoords?.longitude || null,
-                referees: Array.isArray(matchDetail?.arbitros_partido) ? matchDetail.arbitros_partido.map(a => a.nombre).filter(Boolean) : []
-              });
-            }
-            return jornadaMatches;
-          };
-
-          for (const jor of jornadas) {
-            const codJornada = jor.codjornada || jor.nombre;
-            const jornadaNombre = `Jornada ${jor.nombre || codJornada}`;
-            const jornadaMatches = await scrapeJornada(codJornada, jornadaNombre);
-            if (jornadaMatches) {
-              allMatches.push(...jornadaMatches);
-              console.log(`       ${jornadaNombre}: ${jornadaMatches.length} partidos recogidos`);
-            } else {
-              failedJornadas.push({ comp, grp, codJornada, jornadaNombre, scrapeJornada, insertAt: allMatches.length });
-              console.log(`       ${jornadaNombre}: sin respuesta de la FFCV, se reintentará al final`);
-            }
-          }
-          console.log(`     ✅ Grupo ${grp.name} completado.`);
+          // Mientras tanto se conservan los partidos anteriores del grupo
+          const kept = previousMatches.filter(m => m.cod_grupo === grp.id);
+          matchesByJornada.set(`${grp.id}|*`, { matches: kept, refreshed: false });
+          const label = `Jornadas ${comp.name} ${grp.name}`;
+          console.log(`     ⚠️ No se han podido obtener las jornadas, se reintentará al final. De momento se conservan ${kept.length} partidos anteriores.`);
+          defer(label, () => processGroupMatches(comp, grp), () => notUpdated.push(label));
         }
       }
 
-      // Jornadas que han fallado (p. ej. HTTP 503 de Novanet): se reintentan al final y, si
-      // siguen fallando, se conservan los partidos de la ejecución anterior en vez de perderlos.
-      if (failedJornadas.length > 0) {
-        console.log(`\n🔁 Reintentando ${failedJornadas.length} jornada(s) que habían fallado...`);
-        const recovered = [];
-        for (const f of failedJornadas) {
-          const label = `${f.comp.name} ${f.grp.name} - ${f.jornadaNombre}`;
-          let jornadaMatches = await f.scrapeJornada(f.codJornada, f.jornadaNombre);
-          if (jornadaMatches) {
-            console.log(`     ✅ ${label}: ${jornadaMatches.length} partidos recogidos`);
-          } else {
-            jornadaMatches = previousMatches.filter(m => m.cod_grupo === f.grp.id && m.matchday === f.jornadaNombre);
-            stillFailed.push(label);
-            console.log(`     ⚠️ ${label}: sigue fallando. Se conservan ${jornadaMatches.length} partidos anteriores.`);
-          }
-          recovered.push(jornadaMatches);
-        }
-        // Se insertan en su posición original (de atrás adelante para no mover los índices)
-        for (let i = failedJornadas.length - 1; i >= 0; i--) {
-          allMatches.splice(failedJornadas[i].insertAt, 0, ...recovered[i]);
-        }
-      }
-
-      console.log(`\n🏟️  Total partidos recogidos para la agenda: ${allMatches.length}`);
-      const notUpdated = [...failedGroups, ...stillFailed];
-      if (notUpdated.length > 0) {
-        console.warn(`⚠️ No actualizados en esta ejecución (se mantienen los datos anteriores): ${notUpdated.join('; ')}`);
-      }
+      console.log(`\n🏟️  Jornadas: ${refreshedJornadas} actualizadas, ${keptJornadas} ya jugadas sin volver a descargar.`);
 
       // Guardar ya los partidos para no perderlos si la fase de jugadores falla
-      if (allMatches.length > 0) {
-        fs.writeFileSync(path.join(dataDir, 'scraped_matches.json'), JSON.stringify(allMatches, null, 2), 'utf8');
+      const snapshot = currentMatches();
+      if (snapshot.length > 0) {
+        fs.writeFileSync(path.join(dataDir, 'scraped_matches.json'), JSON.stringify(snapshot, null, 2), 'utf8');
       }
     }
 
     // ── 2. RASPADO DE EQUIPOS, JUGADORES E HISTORIAL ─────────────────────────────
+    let dbPlayers = null;
     if (!matchesOnly) {
       console.log('\n========================================');
       console.log('👥 EXTRACCIÓN DE EQUIPOS, PLANTILLAS E HISTORIAL');
       console.log('========================================');
 
+      // Jugadores ya conocidos (BD y JSON anterior): de ellos no hace falta volver a pedir el historial
+      dbPlayers = await loadDbPlayers(supabase);
+      const knownPlayers = new Map();
+      for (const p of readJsonArray(path.join(dataDir, 'scraped_players.json'))) {
+        if (p.ffcv_player_id) knownPlayers.set(String(p.ffcv_player_id), p);
+      }
+      for (const [id, row] of dbPlayers || []) {
+        const fromJson = knownPlayers.get(id);
+        const history = Array.isArray(row.history) && row.history.length > 0 ? row.history : fromJson?.history;
+        knownPlayers.set(id, { ...fromJson, history });
+      }
+      if (dbPlayers) console.log(`ℹ️  ${dbPlayers.size} jugadores ya en Supabase: de ellos solo se actualizan los datos que cambien.`);
+
+      const logPlayer = (player, isNew, incomplete) => {
+        const extra = [
+          isNew ? '🆕 nuevo' : null,
+          player.dorsal ? `#${player.dorsal}` : null,
+          player.position !== 'Sense definir' ? player.position : null,
+          incomplete ? '⚠️ datos incompletos' : null
+        ].filter(Boolean).join(', ');
+        console.log(`        ${player.full_name} -> ${player.infantil_year}${extra ? ` (${extra})` : ''}`);
+      };
+
+      const processPlayer = async (ctx) => {
+        const id = String(ctx.codJugador);
+        const known = knownPlayers.get(id);
+        const isNew = !(dbPlayers ? dbPlayers.has(id) : known);
+        let lastRecord = null;
+
+        const run = async () => {
+          const rec = await scrapePlayer({ ...ctx, known }).catch((err) => {
+            console.warn(`        ⚠️ Error en jugador ${ctx.nombreJugador} (${id}): ${err.message}`);
+            return null;
+          });
+          if (!rec) return false;
+          const { _incomplete, ...player } = rec;
+          lastRecord = player;
+          if (_incomplete) return false;
+          playersById.set(id, player);
+          return true;
+        };
+
+        const ok = await run();
+        if (lastRecord) logPlayer(lastRecord, isNew, !ok);
+        if (ok) return;
+        defer(`Jugador ${ctx.nombreJugador} (${id}) de ${ctx.nombreEquipo}`, run, () => {
+          // Si ya existía se deja como está; si es nuevo se da de alta con lo que se tenga
+          if (!isNew || !lastRecord) keptPlayerIds.push(id);
+          else playersById.set(id, lastRecord);
+        });
+      };
+
+      /** Ficha y plantilla de un equipo. false si la FFCV no ha devuelto el equipo. */
+      const processTeam = async (comp, grp, eq) => {
+        const codEquipo = eq.codequipo;
+        const nombreEquipo = eq.nombre;
+        const teamDetail = await ffcvFetch(`equipos/ver_equipo.php?codequipo=${encodeURIComponent(codEquipo)}`);
+        if (!teamDetail) return false;
+        const teamInfo = teamDetail?.j || teamDetail || {};
+        const jugadores = Array.isArray(teamInfo.jugadores_equipo) ? teamInfo.jugadores_equipo : [];
+
+        teamsByCode.set(String(codEquipo), {
+          id: `ffcv-team-${codEquipo}`,
+          ffcv_cod: codEquipo,
+          name: nombreEquipo,
+          club: teamInfo.nombre_club || nombreEquipo,
+          crest_url: formatLogoUrl(eq.url_img),
+          field_name: teamInfo.campo || null,
+          field_code: teamInfo.codigo_campo || null,
+          address: teamInfo.domicilio_correspondencia || null,
+          city: teamInfo.localidad_correspondencia || 'Castelló',
+          province: teamInfo.provincia_correspondencia || 'Castelló',
+          web: teamInfo.portal_web || null,
+          competition: comp.name,
+          cod_competicion: comp.id,
+          group: grp.name,
+          cod_grupo: grp.id,
+          players_count: jugadores.length
+        });
+
+        const playersToScrape = jugadores.slice(0, limitPlayers);
+        const newCount = playersToScrape.filter((j) => !(dbPlayers ? dbPlayers.has(String(j.cod_jugador)) : knownPlayers.has(String(j.cod_jugador)))).length;
+        console.log(`        Plantilla: ${jugadores.length} jugadores (${newCount} nuevos).`);
+
+        await mapWithConcurrency(playersToScrape, 3, (j) =>
+          processPlayer({ codJugador: j.cod_jugador, nombreJugador: j.nombre, codEquipo, nombreEquipo, comp, grp })
+        );
+
+        // Guardado progresivo por equipo
+        fs.writeFileSync(path.join(dataDir, 'scraped_players.json'), JSON.stringify([...playersById.values()], null, 2), 'utf8');
+        fs.writeFileSync(path.join(dataDir, 'scraped_teams.json'), JSON.stringify([...teamsByCode.values()], null, 2), 'utf8');
+        return true;
+      };
+
+      const teamTask = (comp, grp, eq) => {
+        const label = `Equipo ${eq.nombre} (${eq.codequipo})`;
+        defer(label, () => processTeam(comp, grp, eq), () => {
+          playersComplete = false;
+          notUpdated.push(label);
+        });
+      };
+
+      /** Equipos de un grupo (vía clasificación). false si la FFCV no los ha devuelto. */
+      const processGroupTeams = async (comp, grp) => {
+        const classifData = await ffcvFetch(`clasificaciones/clasificaciones_ajax.php?cod_grupo=${encodeURIComponent(grp.id)}&cod_jornada=1`);
+        const equipos = Array.isArray(classifData?.clasificacion)
+          ? classifData.clasificacion
+          : (Array.isArray(classifData?.clasificaciones) ? classifData.clasificaciones : []);
+        if (equipos.length === 0) return false;
+
+        console.log(`     ${equipos.length} equipos en el grupo.`);
+        const teamsToScrape = equipos.slice(0, limitTeams);
+        if (equipos.length > teamsToScrape.length) {
+          console.log(`     ⚠️ Límite de equipos aplicado (--limit-teams ${limitTeams})`);
+        }
+
+        for (let t = 0; t < teamsToScrape.length; t++) {
+          const eq = teamsToScrape[t];
+          console.log(`\n     🏃 [${t + 1}/${teamsToScrape.length}] Equipo: ${eq.nombre} (${eq.codequipo})`);
+          if (!(await processTeam(comp, grp, eq))) {
+            console.log('        ⚠️ Sin respuesta de la FFCV, se reintentará al final');
+            teamTask(comp, grp, eq);
+          }
+        }
+        return true;
+      };
+
       for (const comp of competitionsToScrape) {
         console.log(`\n🏆 ${comp.name} (${comp.id})`);
-
         for (const grp of comp.groups) {
           console.log(`  🔹 Obteniendo equipos de ${grp.name}...`);
-
-          // Equipos del grupo mediante la clasificación
-          const classifData = await ffcvFetch(`clasificaciones/clasificaciones_ajax.php?cod_grupo=${encodeURIComponent(grp.id)}&cod_jornada=1`);
-          const equipos = Array.isArray(classifData?.clasificacion)
-            ? classifData.clasificacion
-            : (Array.isArray(classifData?.clasificaciones) ? classifData.clasificaciones : []);
-
-          console.log(`     ${equipos.length} equipos en el grupo.`);
-          if (!classifData || equipos.length === 0) playersComplete = false;
-          const teamsToScrape = equipos.slice(0, limitTeams);
-          if (equipos.length > teamsToScrape.length) {
-            console.log(`     ⚠️ Límite de equipos aplicado (--limit-teams ${limitTeams})`);
-          }
-
-          for (let t = 0; t < teamsToScrape.length; t++) {
-            const eq = teamsToScrape[t];
-            const codEquipo = eq.codequipo;
-            const nombreEquipo = eq.nombre;
-
-            console.log(`\n     🏃 [${t + 1}/${teamsToScrape.length}] Equipo: ${nombreEquipo} (${codEquipo})`);
-
-            const teamDetail = await ffcvFetch(`equipos/ver_equipo.php?codequipo=${encodeURIComponent(codEquipo)}`);
-            if (!teamDetail) playersComplete = false;
-            const teamInfo = teamDetail?.j || teamDetail || {};
-            const jugadores = Array.isArray(teamInfo.jugadores_equipo) ? teamInfo.jugadores_equipo : [];
-
-            allTeams.push({
-              id: `ffcv-team-${codEquipo}`,
-              ffcv_cod: codEquipo,
-              name: nombreEquipo,
-              club: teamInfo.nombre_club || nombreEquipo,
-              crest_url: formatLogoUrl(eq.url_img),
-              field_name: teamInfo.campo || null,
-              field_code: teamInfo.codigo_campo || null,
-              address: teamInfo.domicilio_correspondencia || null,
-              city: teamInfo.localidad_correspondencia || 'Castelló',
-              province: teamInfo.provincia_correspondencia || 'Castelló',
-              web: teamInfo.portal_web || null,
-              competition: comp.name,
-              cod_competicion: comp.id,
-              group: grp.name,
-              cod_grupo: grp.id,
-              players_count: jugadores.length
-            });
-
-            const playersToScrape = jugadores.slice(0, limitPlayers);
-            console.log(`        Plantilla: ${jugadores.length} jugadores.`);
-
-            const records = await mapWithConcurrency(playersToScrape, 3, (j) =>
-              scrapePlayer({ codJugador: j.cod_jugador, nombreJugador: j.nombre, codEquipo, nombreEquipo, comp, grp })
-                .catch((err) => {
-                  console.warn(`        ⚠️ Error en jugador ${j.nombre} (${j.cod_jugador}): ${err.message}`);
-                  return null;
-                })
-            );
-
-            records.forEach((rec, idx) => {
-              if (!rec) {
-                playersComplete = false;
-                return;
-              }
-              const { _incomplete, ...player } = rec;
-              allPlayers.push(player);
-              const extra = [
-                player.dorsal ? `#${player.dorsal}` : null,
-                player.position !== 'Sense definir' ? player.position : null,
-                _incomplete ? '⚠️ datos incompletos' : null
-              ].filter(Boolean).join(', ');
-              console.log(`        [${idx + 1}/${playersToScrape.length}] ${player.full_name} -> ${player.infantil_year}${extra ? ` (${extra})` : ''}`);
-            });
-
-            // Guardado progresivo por equipo
-            fs.writeFileSync(path.join(dataDir, 'scraped_players.json'), JSON.stringify(allPlayers, null, 2), 'utf8');
-            fs.writeFileSync(path.join(dataDir, 'scraped_teams.json'), JSON.stringify(allTeams, null, 2), 'utf8');
-          }
+          if (await processGroupTeams(comp, grp)) continue;
+          const label = `Equipos ${comp.name} ${grp.name}`;
+          console.log('     ⚠️ No se han podido obtener los equipos, se reintentará al final');
+          defer(label, () => processGroupTeams(comp, grp), () => {
+            playersComplete = false;
+            notUpdated.push(label);
+          });
         }
       }
     }
 
-    // ── 3. GUARDAR RESULTADOS LOCALES (JSON) ─────────────────────────────────────
+    // ── 3. REINTENTO DE LO QUE HA FALLADO ────────────────────────────────────────
+    const stillFailed = await runDeferred();
+    if (stillFailed.length > 0) {
+      console.warn(`\n⚠️ Siguen fallando tras ${RETRY_ROUNDS} reintentos (se mantienen los datos anteriores):`);
+      for (const label of stillFailed) console.warn(`   - ${label}`);
+    }
+
+    const allMatches = currentMatches();
+    const matchesToSync = [...matchesByJornada.values()].filter((v) => v.refreshed).flatMap((v) => v.matches);
+    const allTeams = [...teamsByCode.values()];
+    const allPlayers = [...playersById.values()];
+
+    // ── 4. GUARDAR RESULTADOS LOCALES (JSON) ─────────────────────────────────────
     if (allMatches.length > 0) {
       const matchesPath = path.join(dataDir, 'scraped_matches.json');
       fs.writeFileSync(matchesPath, JSON.stringify(allMatches, null, 2), 'utf8');
@@ -1095,15 +1311,19 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
       console.log(`   🔹 Desconocido:      ${countYear('Desconocido')}`);
       console.log(`   🔹 Con dorsal:       ${allPlayers.filter(p => p.dorsal).length}`);
       console.log(`   🔹 Con posición:     ${allPlayers.filter(p => p.position !== 'Sense definir').length}`);
+      console.log(`   🔹 Con foto:         ${allPlayers.filter(p => p.photo_url).length}`);
     }
 
-    // ── 4. SINCRONIZACIÓN CON SUPABASE (SI ESTÁ ACTIVO) ──────────────────────────
+    // ── 5. SINCRONIZACIÓN CON SUPABASE (SI ESTÁ ACTIVO) ──────────────────────────
     if (allMatches.length === 0 && allTeams.length === 0) {
       throw new Error('No se ha obtenido ningún partido ni equipo de la FFCV (¿acceso bloqueado?). No se sincroniza nada.');
     }
-    await trySaveToSupabase(allMatches, allTeams, allPlayers, { playersComplete });
+    await trySaveToSupabase(supabase, matchesToSync, allTeams, allPlayers, { playersComplete, dbPlayers, keptPlayerIds });
 
-    console.log(`\n✨ ¡Proceso de scraping finalizado con éxito en ${Math.round((Date.now() - startedAt) / 1000)}s!`);
+    if (notUpdated.length > 0) {
+      console.warn(`\n⚠️ No actualizados en esta ejecución: ${notUpdated.join('; ')}`);
+    }
+    console.log(`\n✨ ¡Proceso de scraping finalizado en ${Math.round((Date.now() - startedAt) / 1000)}s!`);
 
   } catch (err) {
     console.error('\n❌ Error durante el scraping:', err);

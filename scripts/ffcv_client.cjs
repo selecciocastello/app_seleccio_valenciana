@@ -7,7 +7,9 @@
  * página y se reintenta.
  *
  * Todas las peticiones pasan por un limitador global y, ante un 429, se pausan todas el
- * tiempo que indique retry_after antes de reintentar. Los 5xx ("upstream temporalmente
+ * tiempo que indique retry_after antes de reintentar. La FFCV además limita el total de
+ * peticiones por sesión (429 SESSION_RATE_LIMIT): la sesión se renueva cada
+ * SESSION_MAX_REQUESTS peticiones y, si aun así se agota, se abre una nueva al momento. Los 5xx ("upstream temporalmente
  * degradado") se reintentan con espera creciente.
  *
  * Uso:
@@ -24,6 +26,8 @@ const REQUEST_TIMEOUT_MS = 30000;
 const MIN_REQUEST_INTERVAL_MS = 500; // ~120 peticiones/minuto
 const MAX_RATE_LIMIT_RETRIES = 5;
 const MAX_SERVER_ERROR_RETRIES = 4;
+const MAX_SESSION_RENEWALS = 3;
+const SESSION_MAX_REQUESTS = 250;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let nextRequestAt = 0;
@@ -40,6 +44,8 @@ let page = null;
 let pageToken = null;
 let sessionGen = 0;
 let opening = null;
+let resettingGen = -1;
+let sessionRequests = 0;
 
 async function openSession() {
   if (!browser) browser = await chromium.launch();
@@ -51,6 +57,7 @@ async function openSession() {
     if (token) pageToken = token;
   });
   await page.goto(FFCV_HOME, { waitUntil: 'networkidle', timeout: 60000 });
+  sessionRequests = 0;
   sessionGen++;
 }
 
@@ -67,13 +74,19 @@ async function ensureSession() {
 
 /** Recarga la sesión, salvo que otra petición ya lo haya hecho desde `gen`. */
 async function resetSession(gen) {
-  if (gen === sessionGen) opening = null;
+  if (gen === sessionGen && resettingGen !== gen) {
+    resettingGen = gen;
+    opening = null;
+  }
   await ensureSession();
 }
 
 async function rawGet(endpoint) {
   await ensureSession();
+  // Sesión nueva antes de agotar el límite de peticiones por sesión de la FFCV
+  if (sessionRequests >= SESSION_MAX_REQUESTS) await resetSession(sessionGen);
   await acquireRequestSlot();
+  sessionRequests++;
   const gen = sessionGen;
   const res = await page.evaluate(async ({ url, token, timeout }) => {
     const headers = { 'X-Requested-With': 'XMLHttpRequest' };
@@ -94,6 +107,7 @@ async function ffcvApiGet(endpoint) {
   let rateLimited = 0;
   let serverErrors = 0;
   let sessionReset = false;
+  let sessionRenewals = 0;
   while (true) {
     res = await rawGet(endpoint);
     data = null;
@@ -101,6 +115,12 @@ async function ffcvApiGet(endpoint) {
 
     if (res.status === 403 && !sessionReset) {
       sessionReset = true;
+      await resetSession(res.gen);
+      continue;
+    }
+    if (res.status === 429 && data?.reason_code === 'SESSION_RATE_LIMIT' && sessionRenewals < MAX_SESSION_RENEWALS) {
+      sessionRenewals++;
+      if (res.gen === sessionGen && resettingGen !== res.gen) console.warn('        🔄 Límite de la sesión FFCV agotado. Abriendo una sesión nueva...');
       await resetSession(res.gen);
       continue;
     }

@@ -33,7 +33,7 @@ export const QuickDorsalScouting: React.FC<QuickDorsalScoutingProps> = ({
   awayPlayers,
   onPlayerSaved
 }) => {
-  const { updatePlayer, addPlayer, teams } = useAppStore();
+  const { updatePlayer, addPlayer, teams, addDorsalScoutToAgenda } = useAppStore();
   const { showToast } = useToast();
 
   // 1. Equip seleccionat: Local ('home') o Visitant ('away')
@@ -197,11 +197,24 @@ export const QuickDorsalScouting: React.FC<QuickDorsalScoutingProps> = ({
         }
       : undefined;
 
+    const matchScoutData = {
+      match_id: agendaItem.match_id,
+      agenda_id: agendaItem.id,
+      team_name: activeTeamName,
+      side: selectedTeamSide,
+      dorsal: num,
+      rating,
+      status,
+      notes: comment.trim(),
+      created_at: new Date().toISOString()
+    };
+
     if (targetPlayer) {
       // Actualitzar jugador existent
       const updatedSportsData = {
         ...(targetPlayer.sports_data || {}),
-        ...(voiceNoteData ? { voice_note: voiceNoteData } : {})
+        ...(voiceNoteData ? { voice_note: voiceNoteData } : {}),
+        match_scout: matchScoutData
       };
 
       updatePlayer(targetPlayer.id, {
@@ -209,6 +222,19 @@ export const QuickDorsalScouting: React.FC<QuickDorsalScoutingProps> = ({
         rating,
         notes: comment.trim(),
         sports_data: updatedSportsData
+      });
+
+      // Registrar seguiment de dorsal a l'agenda
+      addDorsalScoutToAgenda(agendaItem.id, {
+        team_name: activeTeamName,
+        side: selectedTeamSide,
+        dorsal: num,
+        player_id: targetPlayer.id,
+        rating,
+        status,
+        comment: comment.trim(),
+        voice_note: voiceNoteData,
+        created_at: new Date().toISOString()
       });
 
       // Desa a IndexedDB
@@ -248,7 +274,23 @@ export const QuickDorsalScouting: React.FC<QuickDorsalScoutingProps> = ({
         status,
         rating,
         notes: comment.trim(),
-        sports_data: voiceNoteData ? { voice_note: voiceNoteData } : {}
+        sports_data: {
+          ...(voiceNoteData ? { voice_note: voiceNoteData } : {}),
+          match_scout: matchScoutData
+        }
+      });
+
+      // Registrar seguiment de dorsal a l'agenda per a la reconciliació posterior
+      addDorsalScoutToAgenda(agendaItem.id, {
+        team_name: activeTeamName,
+        side: selectedTeamSide,
+        dorsal: num,
+        player_id: created?.id,
+        rating,
+        status,
+        comment: comment.trim(),
+        voice_note: voiceNoteData,
+        created_at: new Date().toISOString()
       });
 
       if (finalAudioBase64 && created) {
@@ -265,7 +307,7 @@ export const QuickDorsalScouting: React.FC<QuickDorsalScoutingProps> = ({
       }
 
       showToast(
-        `Nou jugador registrat: #${num} ${playerName} valorat: ${rating}⭐`,
+        `Nou jugador registrat: #${num} ${playerName} valorat: ${rating}⭐ (es conciliarà amb l'acta FFCV)`,
         'success'
       );
       if (onPlayerSaved && created) onPlayerSaved(created);

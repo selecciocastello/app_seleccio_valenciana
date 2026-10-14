@@ -23,7 +23,7 @@ const { chromium } = require('playwright');
 
 const FFCV_HOME = 'https://ffcv.es/competiciones/';
 const REQUEST_TIMEOUT_MS = 30000;
-const MIN_REQUEST_INTERVAL_MS = 850; // ~70 peticiones/minuto para evitar IP_ABUSE_BLOCK de la FFCV
+const MIN_REQUEST_INTERVAL_MS = 1050; // ~57 peticiones/minuto para evitar IP_ABUSE_BLOCK de la FFCV
 const MAX_RATE_LIMIT_RETRIES = 10;
 const MAX_SERVER_ERROR_RETRIES = 4;
 const MAX_SESSION_RENEWALS = 5;
@@ -50,15 +50,44 @@ let sessionRequests = 0;
 async function openSession() {
   if (!browser) browser = await chromium.launch();
   if (page) await page.close().catch(() => {});
-  page = await browser.newPage();
-  pageToken = null;
-  page.on('request', (req) => {
-    const token = req.headers()['x-ffcv-page-token'];
-    if (token) pageToken = token;
-  });
-  await page.goto(FFCV_HOME, { waitUntil: 'networkidle', timeout: 60000 });
-  sessionRequests = 0;
-  sessionGen++;
+
+  // Si hay un bloqueo o límite por IP activo, esperar antes de navegar a la web
+  const now = Date.now();
+  if (nextRequestAt > now) {
+    const waitMs = nextRequestAt - now;
+    console.warn(`        ⏳ Esperando ${Math.ceil(waitMs / 1000)}s antes de navegar para nueva sesión FFCV...`);
+    await sleep(waitMs);
+  }
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      page = await browser.newPage();
+      pageToken = null;
+      page.on('request', (req) => {
+        const token = req.headers()['x-ffcv-page-token'];
+        if (token) pageToken = token;
+      });
+
+      // Navegación con domcontentloaded + networkidle suave (timeout corto) para evitar bloqueos
+      await page.goto(FFCV_HOME, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await page.waitForLoadState('networkidle', { timeout: 12000 }).catch(() => {});
+
+      // Esperar brevemente a que se capture el token si no vino en las peticiones iniciales
+      for (let i = 0; i < 20 && !pageToken; i++) {
+        await sleep(250);
+      }
+
+      sessionRequests = 0;
+      sessionGen++;
+      return;
+    } catch (err) {
+      console.warn(`        ⚠️ Intento ${attempt}/3 al abrir sesión en FFCV: ${err.message}`);
+      if (page) await page.close().catch(() => {});
+      page = null;
+      if (attempt === 3) throw err;
+      await sleep(4000 * attempt);
+    }
+  }
 }
 
 /** Abre la sesión una sola vez aunque la pidan varias peticiones a la vez. */
@@ -126,12 +155,15 @@ async function ffcvApiGet(endpoint) {
     }
     if (res.status === 429 && rateLimited < MAX_RATE_LIMIT_RETRIES) {
       rateLimited++;
-      const isIpAbuse = data?.reason_code === 'IP_ABUSE_BLOCK';
+      const isIpAbuse = data?.reason_code === 'IP_ABUSE_BLOCK' || data?.reason_code === 'IP_ABUSE_LIMIT';
       const waitSecs = (parseInt(data?.retry_after, 10) || (isIpAbuse ? 75 : 60)) + 3;
       if (Date.now() + waitSecs * 1000 > nextRequestAt) {
         console.warn(`        ⏳ Límite de peticiones FFCV alcanzado (${data?.reason_code || '429'}). Esperando ${waitSecs}s...`);
         nextRequestAt = Date.now() + waitSecs * 1000;
       }
+      // Esperar activamente la penalización ANTES de abrir nueva sesión o reintentar
+      await sleep(waitSecs * 1000);
+
       if (isIpAbuse && sessionRenewals < MAX_SESSION_RENEWALS) {
         sessionRenewals++;
         await resetSession(res.gen);

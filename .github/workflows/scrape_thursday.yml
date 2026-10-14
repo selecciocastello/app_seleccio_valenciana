@@ -33,27 +33,24 @@ jobs:
       - name: 🌐 Instalar navegador Chromium (Playwright)
         run: npx playwright install --with-deps chromium
 
-      - name: ⚽ Ejecutar Scraping FFCV (Partidos, Campos y Jugadores)
+      - name: ⚽ Ejecutar Scraping FFCV (Partidos y Campos)
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: node scripts/scrape_ffcv_infantil.cjs
+        run: node scripts/scrape_ffcv_infantil.cjs --matches-only
 
       - name: 💾 Guardar datos JSON en el repositorio (Commit & Push)
-        # always(): las fotos y los JSON se suben aunque el scraping falle o se agote el tiempo,
-        # porque Supabase ya puede apuntar a las fotos nuevas de public/players
+        # always(): los JSON se suben aunque el scraping falle o se agote el tiempo
         if: ${{ always() }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add src/data/*.json scripts/fields_cache.json public/players || true
+          git add src/data/scraped_matches.json scripts/fields_cache.json || true
           if git diff --staged --quiet; then
             echo "No hay cambios nuevos en los datos locales."
             exit 0
           fi
-          git commit -m "chore(data): actualización automática de partidos y jugadores"
-          # Si alguien ha hecho push durante el scraping, se integra antes de subir (si no, el push
-          # se rechaza y las fotos nuevas se pierden)
+          git commit -m "chore(data): actualización automática de partidos y campos"
           for attempt in 1 2 3; do
             git pull --rebase -X theirs origin ${{ github.ref_name }} && git push origin HEAD:${{ github.ref_name }} && exit 0
             echo "Push rechazado (intento $attempt), reintentando..."

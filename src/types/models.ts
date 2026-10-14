@@ -337,6 +337,29 @@ export interface AuditLog {
   created_at: string;
 }
 
+export interface DorsalScoutItem {
+  id?: string;
+  team_name: string;
+  side: 'home' | 'away';
+  dorsal: number;
+  player_id?: string;
+  rating?: number;
+  status?: PlayerStatus;
+  comment?: string;
+  voice_note?: {
+    audioBase64?: string;
+    transcript?: string;
+    duration?: number;
+    date?: string;
+  };
+  created_at?: string;
+  reconciled?: boolean;
+  reconciled_at?: string;
+  reconciled_player_id?: string;
+  reconciled_player_name?: string;
+  status_resolution?: 'coincides' | 'created_from_acta' | 'reassigned_by_name';
+}
+
 export interface ScoutingAgendaItem {
   id: string;
   match_id: string;
@@ -351,6 +374,7 @@ export interface ScoutingAgendaItem {
   observed_teams: string[];
   notes?: string;
   standout_players?: string[];
+  dorsal_scouts?: DorsalScoutItem[];
   created_at: string;
   updated_at?: string;
   lineup_processed_at?: string; // Acta processada (scripts/process_observed_matches.cjs)

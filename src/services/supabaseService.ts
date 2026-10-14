@@ -254,25 +254,36 @@ export const supabaseService = {
   async saveAgendaItem(item: Partial<ScoutingAgendaItem>): Promise<ScoutingAgendaItem | null> {
     if (!isSupabaseConfigured()) return null;
     try {
-      const { data, error } = await supabase
+      const payload: Record<string, unknown> = {
+        id: item.id,
+        match_id: item.match_id,
+        selector_id: item.selector_id,
+        selector_name: item.selector_name || 'Seleccionador',
+        status: item.status || 'Planificat',
+        scheduled_date: item.scheduled_date,
+        observed_at: item.observed_at,
+        home_team_name: item.home_team_name,
+        away_team_name: item.away_team_name,
+        observed_teams: item.observed_teams || [],
+        notes: item.notes,
+        standout_players: item.standout_players || [],
+        dorsal_scouts: item.dorsal_scouts || [],
+        updated_at: new Date().toISOString()
+      };
+
+      let { data, error } = await supabase
         .from('scouting_agenda')
-        .upsert([{
-          id: item.id,
-          match_id: item.match_id,
-          selector_id: item.selector_id,
-          selector_name: item.selector_name || 'Seleccionador',
-          status: item.status || 'Planificat',
-          scheduled_date: item.scheduled_date,
-          observed_at: item.observed_at,
-          home_team_name: item.home_team_name,
-          away_team_name: item.away_team_name,
-          observed_teams: item.observed_teams || [],
-          notes: item.notes,
-          standout_players: item.standout_players || [],
-          updated_at: new Date().toISOString()
-        }])
+        .upsert([payload])
         .select('*')
         .single();
+
+      // Si la columna dorsal_scouts aún no existe en Supabase, reintentar sin ella
+      if (error && /dorsal_scouts/.test(error.message || '')) {
+        delete payload.dorsal_scouts;
+        const res = await supabase.from('scouting_agenda').upsert([payload]).select('*').single();
+        data = res.data;
+        error = res.error;
+      }
 
       if (error) return null;
       return data as ScoutingAgendaItem;

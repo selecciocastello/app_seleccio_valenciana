@@ -43,6 +43,7 @@ export const Agenda: React.FC = () => {
 
   const {
     matches,
+    players,
     agenda: rawAgenda,
     removeFromAgenda,
     markMatchAsObserved,
@@ -989,13 +990,25 @@ export const Agenda: React.FC = () => {
 
                     <div className="space-y-3">
                       {(() => {
-                        const highlighted = [...homeBD.playersList, ...awayBD.playersList].filter(
+                        const matchScoutPlayers = players.filter(
+                          (p) =>
+                            (p.sports_data as any)?.match_scout?.agenda_id === selectedMatchRosterItem.id ||
+                            (p.sports_data as any)?.match_scout?.match_id === selectedMatchRosterItem.match_id
+                        );
+                        const baseRoster = [...homeBD.playersList, ...awayBD.playersList];
+                        const allCandidatesMap = new Map<string, Player>();
+                        for (const p of [...baseRoster, ...matchScoutPlayers]) {
+                          allCandidatesMap.set(p.id, p);
+                        }
+
+                        const highlighted = Array.from(allCandidatesMap.values()).filter(
                           (p) =>
                             p.status === 'Interesante' ||
                             p.status === 'Preseleccionado' ||
                             (p.rating && p.rating > 0) ||
                             (p.notes && p.notes.trim().length > 0) ||
-                            (p.sports_data as any)?.voice_note
+                            (p.sports_data as any)?.voice_note ||
+                            (p.sports_data as any)?.match_scout
                         );
 
                         if (highlighted.length === 0) {

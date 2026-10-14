@@ -793,6 +793,117 @@ async function trySaveToSupabase(supabase, matches, teams, players, { playersCom
   }
 }
 
+/**
+ * Sincroniza un único equipo y sus jugadores con Supabase inmediatamente tras rasparlo.
+ * Permite guardado progresivo equipo a equipo para que ninguna interrupción pierda datos.
+ */
+async function syncTeamAndPlayersToSupabase(supabase, teamRecord, teamPlayers, { dbPlayers, manualPositions }) {
+  if (!supabase || !teamRecord || !teamRecord.name) return;
+  try {
+    const teamDbRow = {
+      name: teamRecord.name.trim(),
+      club: teamRecord.club || teamRecord.name.trim(),
+      crest_url: teamRecord.crest_url || null,
+      field_name: teamRecord.field_name || null,
+      city: teamRecord.city && teamRecord.city !== '0' ? teamRecord.city : 'Castelló',
+      province: teamRecord.province && teamRecord.province !== 'Otra' ? teamRecord.province : 'Castelló',
+      address: teamRecord.address || null,
+      latitude: teamRecord.latitude ? parseFloat(teamRecord.latitude) : null,
+      longitude: teamRecord.longitude ? parseFloat(teamRecord.longitude) : null
+    };
+
+    const { data: upsertedTeams, error: tErr } = await supabase
+      .from('teams')
+      .upsert([teamDbRow], { onConflict: 'name' })
+      .select('id, name');
+
+    if (tErr) {
+      console.warn(`        ⚠️ Error sincronizando equipo ${teamRecord.name} a Supabase:`, tErr.message);
+    }
+
+    const teamId = upsertedTeams?.[0]?.id || null;
+
+    if (teamPlayers && teamPlayers.length > 0) {
+      const playersMap = new Map();
+      for (const p of teamPlayers) {
+        const sourcePlayerId = String(p.ffcv_player_id || p.source_player_id || p.id || '');
+        if (!sourcePlayerId) continue;
+
+        const { firstName, lastName } = parsePlayerName(p.full_name);
+
+        let cleanJersey = null;
+        if (p.dorsal != null && p.dorsal !== '') {
+          const num = parseInt(p.dorsal, 10);
+          if (!isNaN(num) && num > 0 && num <= 99) {
+            cleanJersey = num;
+          }
+        }
+
+        let position = p.position || 'Candidato';
+        if (manualPositions && manualPositions.has(sourcePlayerId)) {
+          position = manualPositions.get(sourcePlayerId);
+        }
+
+        playersMap.set(sourcePlayerId, {
+          first_name: firstName,
+          last_name: lastName,
+          position,
+          jersey_number: cleanJersey,
+          photo_url: toPhotoUrl(p.photo_url, sourcePlayerId),
+          team_id: teamId,
+          city: p.city || 'Castelló',
+          province: p.province || 'Castelló',
+          is_stale: false,
+          sports_data: p.sports_data || {},
+          source: 'ffcv_scraping',
+          source_player_id: sourcePlayerId,
+          source_url: p.source_url || null,
+          infantil_year: p.infantil_year || 'Desconocido',
+          age: p.age ? parseInt(p.age, 10) : null,
+          history: p.history || [],
+          scraped_at: p.scraped_at || new Date().toISOString()
+        });
+      }
+
+      const toWrite = [];
+      let newCount = 0;
+      let changedCount = 0;
+      for (const [sourcePlayerId, row] of playersMap) {
+        const current = dbPlayers?.get(sourcePlayerId);
+        if (!current) {
+          newCount++;
+          toWrite.push(row);
+        } else if (PLAYER_SYNC_FIELDS.some((f) => stableStringify(row[f]) !== stableStringify(current[f]))) {
+          changedCount++;
+          toWrite.push(row);
+        }
+      }
+
+      if (toWrite.length > 0) {
+        const chunkSize = 100;
+        let pSuccess = 0;
+        for (let i = 0; i < toWrite.length; i += chunkSize) {
+          const chunk = toWrite.slice(i, i + chunkSize);
+          const { error: pErr } = await supabase.from('players').upsert(chunk, { onConflict: 'source,source_player_id' });
+          if (pErr) console.warn(`        ⚠️ Error sincronizando lote de jugadores a Supabase:`, pErr.message);
+          else pSuccess += chunk.length;
+        }
+        console.log(`        📡 Supabase: ${pSuccess}/${toWrite.length} jugadores subidos (${newCount} nuevos, ${changedCount} con cambios).`);
+
+        if (dbPlayers) {
+          for (const row of toWrite) {
+            dbPlayers.set(String(row.source_player_id), row);
+          }
+        }
+      } else {
+        console.log(`        📡 Supabase: ${playersMap.size} jugadores al día en Supabase.`);
+      }
+    }
+  } catch (err) {
+    console.warn(`        ⚠️ Error en sincronización progresiva del equipo ${teamRecord?.name}:`, err.message);
+  }
+}
+
 // Posiciones de la FFCV -> posiciones canónicas de la app (PLAYER_POSITIONS en src/types/models.ts)
 const POSITION_MAP = {
   'portero': 'Portero',
@@ -1183,6 +1294,7 @@ function readJsonArray(filePath) {
 
       // Jugadores ya conocidos (BD y JSON anterior): de ellos no hace falta volver a pedir el historial
       dbPlayers = await loadDbPlayers(supabase);
+      const manualPositions = supabase ? await fetchManualPositions(supabase) : new Map();
       const knownPlayers = new Map();
       for (const p of readJsonArray(path.join(dataDir, 'scraped_players.json'))) {
         if (p.ffcv_player_id) knownPlayers.set(String(p.ffcv_player_id), p);
@@ -1269,9 +1381,18 @@ function readJsonArray(filePath) {
           processPlayer({ codJugador: j.cod_jugador, nombreJugador: j.nombre, codEquipo, nombreEquipo, comp, grp })
         );
 
-        // Guardado progresivo por equipo
+        // Guardado progresivo por equipo local (JSON)
         fs.writeFileSync(path.join(dataDir, 'scraped_players.json'), JSON.stringify([...playersById.values()], null, 2), 'utf8');
         fs.writeFileSync(path.join(dataDir, 'scraped_teams.json'), JSON.stringify([...teamsByCode.values()], null, 2), 'utf8');
+
+        // Guardado progresivo a Supabase equipo a equipo inmediatamente
+        if (supabase) {
+          const teamRecord = teamsByCode.get(String(codEquipo));
+          const teamScrapedPlayers = playersToScrape
+            .map((j) => playersById.get(String(j.cod_jugador)))
+            .filter(Boolean);
+          await syncTeamAndPlayersToSupabase(supabase, teamRecord, teamScrapedPlayers, { dbPlayers, manualPositions });
+        }
         return true;
       };
 

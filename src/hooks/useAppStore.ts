@@ -709,6 +709,38 @@ export function useAppStore() {
     );
   };
 
+  const addDorsalScoutToAgenda = useCallback(
+    (agendaId: string, scout: import('../types/models').DorsalScoutItem) => {
+      setMemoryAgenda(
+        memoryAgenda.map((item) => {
+          if (item.id !== agendaId) return item;
+          const prevScouts = item.dorsal_scouts || [];
+          const existingIdx = prevScouts.findIndex(
+            (s) =>
+              s.dorsal === scout.dorsal &&
+              s.team_name.trim().toLowerCase() === scout.team_name.trim().toLowerCase()
+          );
+          let newScouts: import('../types/models').DorsalScoutItem[];
+          if (existingIdx !== -1) {
+            newScouts = [...prevScouts];
+            newScouts[existingIdx] = { ...newScouts[existingIdx], ...scout };
+          } else {
+            newScouts = [...prevScouts, scout];
+          }
+
+          const updated: ScoutingAgendaItem = {
+            ...item,
+            dorsal_scouts: newScouts,
+            updated_at: new Date().toISOString()
+          };
+          saveAgendaItemToDb(updated);
+          return updated;
+        })
+      );
+    },
+    []
+  );
+
   // Veces que un equipo ha sido observado
   const getTeamObservationCount = useCallback((teamName: string): number => {
     if (!teamName) return 0;
@@ -844,6 +876,7 @@ export function useAppStore() {
     addToAgenda,
     removeFromAgenda,
     markMatchAsObserved,
+    addDorsalScoutToAgenda,
     getTeamObservationCount,
     getTeamObservations,
     getTeamPlayersBreakdown,

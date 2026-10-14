@@ -47,7 +47,7 @@ interface HeavyCache extends HeavyData {
   savedAt: number;
 }
 
-const HEAVY_CACHE_KEY = 'heavy_data_v4';
+const HEAVY_CACHE_KEY = 'heavy_data_v5'; // v5: ya no se cortan jugadores ni partidos a 1000
 // Aunque la versión no cambie, se refresca como mucho una vez al día
 const HEAVY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 

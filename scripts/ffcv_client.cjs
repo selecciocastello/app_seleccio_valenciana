@@ -23,11 +23,11 @@ const { chromium } = require('playwright');
 
 const FFCV_HOME = 'https://ffcv.es/competiciones/';
 const REQUEST_TIMEOUT_MS = 30000;
-const MIN_REQUEST_INTERVAL_MS = 500; // ~120 peticiones/minuto
-const MAX_RATE_LIMIT_RETRIES = 5;
+const MIN_REQUEST_INTERVAL_MS = 850; // ~70 peticiones/minuto para evitar IP_ABUSE_BLOCK de la FFCV
+const MAX_RATE_LIMIT_RETRIES = 10;
 const MAX_SERVER_ERROR_RETRIES = 4;
-const MAX_SESSION_RENEWALS = 3;
-const SESSION_MAX_REQUESTS = 250;
+const MAX_SESSION_RENEWALS = 5;
+const SESSION_MAX_REQUESTS = 180;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let nextRequestAt = 0;
@@ -126,10 +126,15 @@ async function ffcvApiGet(endpoint) {
     }
     if (res.status === 429 && rateLimited < MAX_RATE_LIMIT_RETRIES) {
       rateLimited++;
-      const waitSecs = (parseInt(data?.retry_after, 10) || 60) + 2;
+      const isIpAbuse = data?.reason_code === 'IP_ABUSE_BLOCK';
+      const waitSecs = (parseInt(data?.retry_after, 10) || (isIpAbuse ? 75 : 60)) + 3;
       if (Date.now() + waitSecs * 1000 > nextRequestAt) {
-        console.warn(`        ⏳ Límite de peticiones FFCV alcanzado. Esperando ${waitSecs}s...`);
+        console.warn(`        ⏳ Límite de peticiones FFCV alcanzado (${data?.reason_code || '429'}). Esperando ${waitSecs}s...`);
         nextRequestAt = Date.now() + waitSecs * 1000;
+      }
+      if (isIpAbuse && sessionRenewals < MAX_SESSION_RENEWALS) {
+        sessionRenewals++;
+        await resetSession(res.gen);
       }
       continue;
     }

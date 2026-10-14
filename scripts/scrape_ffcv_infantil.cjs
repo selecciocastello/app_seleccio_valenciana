@@ -160,6 +160,13 @@ function todayInSpain() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
 }
 
+/** Devuelve la fecha base (YYYY-MM-DD) más N días. */
+function datePlusDays(dateStr, days) {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split('T')[0];
+}
+
 /** JSON con las claves ordenadas, para comparar valores jsonb de la BD con los nuevos. */
 function stableStringify(value) {
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
@@ -991,9 +998,30 @@ function readJsonArray(filePath) {
         const jornadaMatches = [];
 
         // Ficha detallada de cada partido (árbitros, código de campo, hora confirmada)
-        const details = await mapWithConcurrency(partidosList, 3, (p) =>
-          p.codacta ? ffcvFetch(`partidos/ficha_partido_ajax.php?cod_partido=${encodeURIComponent(p.codacta)}`) : null
-        );
+        // Solo llamamos a ficha_partido_ajax si el partido ya se ha jugado (para tener el acta/árbitros completos)
+        // o si es inminente (a menos de 7 días). Para partidos futuros lejanos, los datos de resultados_por_grupo_jornada_data son suficientes.
+        const prevMatchesMap = new Map((prevByJornada.get(`${grp.id}|${jornadaNombre}`) || []).map((m) => [m.codacta, m]));
+
+        const details = await mapWithConcurrency(partidosList, 2, (p) => {
+          if (!p.codacta) return null;
+          const fechaPart = parseDate(p.fecha);
+          const isNearOrPlayed = p.estado === '1' || Boolean(parseResult(p.resultado)) || (fechaPart && fechaPart <= datePlusDays(today, 7));
+          if (isNearOrPlayed) {
+            return ffcvFetch(`partidos/ficha_partido_ajax.php?cod_partido=${encodeURIComponent(p.codacta)}`);
+          }
+          // Usar datos previos si existían
+          const prevMatch = prevMatchesMap.get(p.codacta);
+          if (prevMatch) {
+            return {
+              codigo_campo: prevMatch.field_code,
+              campo: prevMatch.field_name,
+              fecha: prevMatch.match_date,
+              hora: prevMatch.time,
+              arbitros_partido: (prevMatch.referees || []).map((r) => ({ nombre: r }))
+            };
+          }
+          return null;
+        });
 
         for (let i = 0; i < partidosList.length; i++) {
           const p = partidosList[i];
@@ -1056,45 +1084,67 @@ function readJsonArray(filePath) {
         return jornadaMatches;
       };
 
-      const processJornada = async (comp, grp, jor) => {
-        const codJornada = jor.codjornada || jor.nombre;
-        const jornadaNombre = `Jornada ${jor.nombre || codJornada}`;
-        const key = `${grp.id}|${jornadaNombre}`;
-        const prev = prevByJornada.get(key) || [];
-
-        if (!refreshAllMatches && prev.length > 0 && prev.every(isPlayed)) {
-          matchesByJornada.set(key, { matches: prev, refreshed: false });
-          keptJornadas++;
-          console.log(`       ${jornadaNombre}: ya jugada, se conservan sus ${prev.length} partidos`);
-          return;
-        }
-
-        // Mientras no se descargue, la jornada conserva los partidos anteriores
-        matchesByJornada.set(key, { matches: prev, refreshed: false });
-        const label = `Partidos ${comp.name} ${grp.name} - ${jornadaNombre}`;
-        const run = async () => {
-          const jornadaMatches = await scrapeJornada(comp, grp, codJornada, jornadaNombre);
-          if (!jornadaMatches) return false;
-          matchesByJornada.set(key, { matches: jornadaMatches, refreshed: true });
-          refreshedJornadas++;
-          return true;
-        };
-        if (await run()) {
-          console.log(`       ${jornadaNombre}: ${matchesByJornada.get(key).matches.length} partidos actualizados`);
-        } else {
-          console.log(`       ${jornadaNombre}: sin respuesta de la FFCV, se reintentará al final`);
-          defer(label, run, () => notUpdated.push(label));
-        }
-      };
-
-      /** Jornadas de un grupo. false si la FFCV no ha devuelto la lista de jornadas. */
+      /** Jornadas de un grupo. Solo se descargan las 3 próximas jornadas a la fecha actual. */
       const processGroupMatches = async (comp, grp) => {
         const jornadasData = await ffcvFetch(`filtros/jornadas_fetch.php?cod_grupo=${encodeURIComponent(grp.id)}`);
         if (!jornadasData) return false;
         matchesByJornada.delete(`${grp.id}|*`);
         const jornadas = Array.isArray(jornadasData.jornadas) ? jornadasData.jornadas : [];
-        console.log(`     Total jornadas: ${jornadas.length}`);
-        for (const jor of jornadas) await processJornada(comp, grp, jor);
+        console.log(`     Total jornadas en el grupo: ${jornadas.length}`);
+
+        // Identificar cuáles jornadas están pendientes / próximas según la fecha de sus partidos en cache
+        const jornadaInfos = jornadas.map((jor, idx) => {
+          const codJornada = jor.codjornada || jor.nombre;
+          const jornadaNombre = `Jornada ${jor.nombre || codJornada}`;
+          const key = `${grp.id}|${jornadaNombre}`;
+          const prev = prevByJornada.get(key) || [];
+          const dates = prev.map((m) => m.match_date).filter(Boolean).sort();
+          const minDate = dates[0] || '';
+          const allPlayed = prev.length > 0 && prev.every(isPlayed);
+          return { jor, codJornada, jornadaNombre, key, prev, minDate, allPlayed, idx };
+        });
+
+        // Ordenamos las pendientes por fecha estimada (o por orden de jornada)
+        const pending = jornadaInfos.filter((j) => !j.allPlayed);
+        // Las 3 próximas a disputar
+        const targetKeys = new Set(pending.slice(0, 3).map((j) => j.key));
+
+        for (const info of jornadaInfos) {
+          const { jor, codJornada, jornadaNombre, key, prev, allPlayed } = info;
+
+          // 1. Si ya se jugó entera en el pasado, se conservan sus partidos sin pedir nada
+          if (!refreshAllMatches && allPlayed) {
+            matchesByJornada.set(key, { matches: prev, refreshed: false });
+            keptJornadas++;
+            console.log(`       ${jornadaNombre}: ya jugada, se conservan sus ${prev.length} partidos`);
+            continue;
+          }
+
+          // 2. Si no es una de las 3 próximas jornadas y ya tenemos partidos en cache, los conservamos
+          if (!refreshAllMatches && !targetKeys.has(key) && prev.length > 0) {
+            matchesByJornada.set(key, { matches: prev, refreshed: false });
+            keptJornadas++;
+            console.log(`       ${jornadaNombre}: jornada futura (más allá de las 3 próximas), se conservan sus ${prev.length} partidos`);
+            continue;
+          }
+
+          // 3. Es una de las 3 próximas jornadas (o jornada pendiente nueva sin cache): se descarga
+          matchesByJornada.set(key, { matches: prev, refreshed: false });
+          const label = `Partidos ${comp.name} ${grp.name} - ${jornadaNombre}`;
+          const run = async () => {
+            const jornadaMatches = await scrapeJornada(comp, grp, codJornada, jornadaNombre);
+            if (!jornadaMatches) return false;
+            matchesByJornada.set(key, { matches: jornadaMatches, refreshed: true });
+            refreshedJornadas++;
+            return true;
+          };
+          if (await run()) {
+            console.log(`       ${jornadaNombre}: ⚡ ${matchesByJornada.get(key).matches.length} partidos actualizados (próxima jornada)`);
+          } else {
+            console.log(`       ${jornadaNombre}: sin respuesta de la FFCV, se reintentará al final`);
+            defer(label, run, () => notUpdated.push(label));
+          }
+        }
         return true;
       };
 
@@ -1215,7 +1265,7 @@ function readJsonArray(filePath) {
         const newCount = playersToScrape.filter((j) => !(dbPlayers ? dbPlayers.has(String(j.cod_jugador)) : knownPlayers.has(String(j.cod_jugador)))).length;
         console.log(`        Plantilla: ${jugadores.length} jugadores (${newCount} nuevos).`);
 
-        await mapWithConcurrency(playersToScrape, 3, (j) =>
+        await mapWithConcurrency(playersToScrape, 2, (j) =>
           processPlayer({ codJugador: j.cod_jugador, nombreJugador: j.nombre, codEquipo, nombreEquipo, comp, grp })
         );
 

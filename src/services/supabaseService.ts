@@ -2,6 +2,29 @@ import { supabase, isSupabaseConfigured } from '../config/supabaseClient';
 import type { Player, Team, Match, Callup, TrainingSession, PlayerReport, ScoutingAgendaItem } from '../types/models';
 import { calculateInfantilYear } from '../utils/infantilYear';
 
+// Supabase devuelve como máximo 1000 filas por consulta: las tablas grandes se leen por páginas.
+// Se ordena también por id para que la paginación sea estable.
+const PAGE_SIZE = 1000;
+
+async function fetchAllPages<T>(
+  table: string,
+  columns: string,
+  orderBy: string
+): Promise<{ data: T[]; error: { message: string } | null }> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from(table)
+      .select(columns)
+      .order(orderBy, { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) return { data: rows, error };
+    rows.push(...((data as T[]) || []));
+    if (!data || data.length < PAGE_SIZE) return { data: rows, error: null };
+  }
+}
+
 export const supabaseService = {
   isConfigured: isSupabaseConfigured,
 
@@ -26,17 +49,13 @@ export const supabaseService = {
   async fetchPlayers(): Promise<Player[]> {
     if (!isSupabaseConfigured()) return [];
     try {
-      const { data, error } = await supabase
-        .from('players')
-        .select('*, team:teams(*)')
-        .order('full_name', { ascending: true })
-        .limit(5000);
+      const { data, error } = await fetchAllPages<Player>('players', '*, team:teams(*)', 'full_name');
 
       if (error) {
         console.warn('Error en fetchPlayers de Supabase:', error.message);
         return [];
       }
-      return ((data as Player[]) || []).map((p) => ({
+      return data.map((p) => ({
         ...p,
         birth_year: p.birth_year || (p.birth_date ? new Date(p.birth_date).getFullYear() : undefined),
         infantil_year: calculateInfantilYear(
@@ -145,16 +164,12 @@ export const supabaseService = {
   async fetchMatches(): Promise<Match[]> {
     if (!isSupabaseConfigured()) return [];
     try {
-      const { data, error } = await supabase
-        .from('matches')
-        .select('*')
-        .order('match_date', { ascending: true })
-        .limit(5000);
+      const { data, error } = await fetchAllPages<Match>('matches', '*', 'match_date');
       if (error) {
         console.warn('Error en fetchMatches de Supabase:', error.message);
         return [];
       }
-      return (data as Match[]) || [];
+      return data;
     } catch (e) {
       console.warn('Excepción al conectar con Supabase (fetchMatches):', e);
       return [];

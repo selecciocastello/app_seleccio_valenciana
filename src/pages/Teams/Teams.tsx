@@ -26,6 +26,38 @@ import { isMatchSchedulable } from '../../utils/agenda';
 import { formatMatchDateTime, formatAppDate } from '../../utils/dateFormatter';
 import { formatCompetition } from '../../utils/competitionFormatter';
 
+const getCategoryBadgeStyle = (compName: string = '') => {
+  const comp = compName.toLowerCase();
+  if (comp.includes('autonòmica') || comp.includes('autonomica')) {
+    return {
+      bg: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+      icon: 'text-amber-400'
+    };
+  }
+  if (comp.includes('preferent')) {
+    return {
+      bg: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
+      icon: 'text-sky-400'
+    };
+  }
+  if (comp.includes('primera') || comp.includes('1ª') || comp.includes('1a')) {
+    return {
+      bg: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+      icon: 'text-emerald-400'
+    };
+  }
+  if (comp.includes('segona') || comp.includes('2ª') || comp.includes('2a')) {
+    return {
+      bg: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+      icon: 'text-purple-400'
+    };
+  }
+  return {
+    bg: 'bg-slate-700/30 text-slate-300 border-slate-600/30',
+    icon: 'text-slate-400'
+  };
+};
+
 export const Teams: React.FC = () => {
   const navigate = useNavigate();
   const {
@@ -515,12 +547,17 @@ export const Teams: React.FC = () => {
 
                         <div className="flex-1 min-w-0">
                           {/* Insígnia de la Lliga / Categoria */}
-                          <div className="flex items-center gap-1 mb-1">
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-sky-500/15 text-sky-300 border border-sky-500/30 truncate max-w-full">
-                              <Trophy className="w-2.5 h-2.5 text-sky-400 shrink-0" />
-                              <span className="truncate">{formatCompetition(team.competition, team.group)}</span>
-                            </span>
-                          </div>
+                          {(() => {
+                            const badgeStyle = getCategoryBadgeStyle(team.competition);
+                            return (
+                              <div className="flex items-center gap-1 mb-1">
+                                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border truncate max-w-full ${badgeStyle.bg}`}>
+                                  <Trophy className={`w-2.5 h-2.5 shrink-0 ${badgeStyle.icon}`} />
+                                  <span className="truncate">{formatCompetition(team.competition, team.group)}</span>
+                                </span>
+                              </div>
+                            );
+                          })()}
 
                           <h3 className="text-sm font-black text-white line-clamp-2 break-words group-hover:text-sky-300 transition-colors">
                             {team.name}
@@ -750,12 +787,17 @@ export const Teams: React.FC = () => {
                   )}
                 </div>
                 <div>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-sky-500/20 text-sky-300 border border-sky-500/30">
-                      <Trophy className="w-3 h-3 text-sky-400" />
-                      <span>{formatCompetition(selectedTeamForModal.competition, selectedTeamForModal.group)}</span>
-                    </span>
-                  </div>
+                  {(() => {
+                    const badgeStyle = getCategoryBadgeStyle(selectedTeamForModal.competition);
+                    return (
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${badgeStyle.bg}`}>
+                          <Trophy className={`w-3 h-3 ${badgeStyle.icon}`} />
+                          <span>{formatCompetition(selectedTeamForModal.competition, selectedTeamForModal.group)}</span>
+                        </span>
+                      </div>
+                    );
+                  })()}
                   <h3 className="text-base font-black text-white">{selectedTeamForModal.name}</h3>
                   <p className="text-xs text-slate-400">
                     {selectedTeamForModal.club} · {selectedTeamForModal.city || 'Castelló'}

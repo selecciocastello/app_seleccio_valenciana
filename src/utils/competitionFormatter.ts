@@ -14,7 +14,10 @@ export function normalizeCompetitionName(competition?: string | null): string {
   if (!competition) return 'Preferent Infantil';
   const c = competition.toLowerCase();
   
-  if (c.includes('preferent') || c.includes('autonòmica') || c.includes('autonomica')) {
+  if (c.includes('autonòmica') || c.includes('autonomica')) {
+    return 'Lliga Autonòmica Infantil';
+  }
+  if (c.includes('preferent')) {
     return 'Preferent Infantil';
   }
   if (c.includes('primera') || c.includes('1a') || c.includes('1ª') || c.includes('1r') || c.includes('1 regional')) {
@@ -45,7 +48,9 @@ export function formatCompetitionShort(competition?: string | null, group?: stri
   const shortGrp = grpName ? grpName.replace('Grup ', 'G') : '';
 
   let shortComp = 'Preferent';
-  if (compName.includes('1ª Regional')) {
+  if (compName.includes('Autonòmica')) {
+    shortComp = 'Autonòmica';
+  } else if (compName.includes('1ª Regional')) {
     shortComp = '1ª Regional';
   } else if (compName.includes('2ª Regional')) {
     shortComp = '2ª Regional';

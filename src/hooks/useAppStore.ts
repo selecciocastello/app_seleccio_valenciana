@@ -47,7 +47,7 @@ interface HeavyCache extends HeavyData {
   savedAt: number;
 }
 
-const HEAVY_CACHE_KEY = 'heavy_data_v5'; // v5: ya no se cortan jugadores ni partidos a 1000
+const HEAVY_CACHE_KEY = 'heavy_data_v6'; // v6: inferencia automática de categorías oficiales por calendario de partidos
 // Aunque la versión no cambie, se refresca como mucho una vez al día
 const HEAVY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -282,14 +282,78 @@ function persistHeavyCache() {
 }
 
 function applyHeavyData(data: HeavyData) {
+  // Construir mapa de frecuencias de competición/grupo por equipo a partir del calendario de partidos
+  const teamMatchesMap = new Map<string, Map<string, { count: number; competition: string; group: string }>>();
+  if (data.matches && data.matches.length > 0) {
+    data.matches.forEach((m) => {
+      const comp = m.competition_name;
+      const grp = m.group_name;
+      if (!comp) return;
+
+      const keysToRegister = [
+        m.home_team_id,
+        m.away_team_id,
+        m.home_team_name ? m.home_team_name.trim().toLowerCase() : undefined,
+        m.away_team_name ? m.away_team_name.trim().toLowerCase() : undefined
+      ].filter(Boolean) as string[];
+
+      const catKey = `${comp}__${grp || ''}`;
+
+      keysToRegister.forEach((k) => {
+        if (!teamMatchesMap.has(k)) teamMatchesMap.set(k, new Map());
+        const innerMap = teamMatchesMap.get(k)!;
+        const current = innerMap.get(catKey) || { count: 0, competition: comp, group: grp || 'Grup - 1' };
+        current.count += 1;
+        innerMap.set(catKey, current);
+      });
+    });
+  }
+
+  const resolveTeamCompAndGroup = (t: Team, matchScraped?: any) => {
+    // 1. Si el equipo ya trae competición y no es el fallback por defecto 'Lliga Preferent Infantil', o si tiene grupo propio
+    if (t.competition && t.competition !== 'Lliga Preferent Infantil') {
+      return { competition: t.competition, group: t.group || 'Grup - 1' };
+    }
+
+    // 2. Comprobar partidos oficiales disputados por el equipo
+    const lookupKeys = [
+      t.id,
+      t.name ? t.name.trim().toLowerCase() : undefined
+    ].filter(Boolean) as string[];
+
+    for (const key of lookupKeys) {
+      const matchMap = teamMatchesMap.get(key);
+      if (matchMap && matchMap.size > 0) {
+        let best = { count: 0, competition: '', group: '' };
+        for (const item of matchMap.values()) {
+          if (item.count > best.count) {
+            best = item;
+          }
+        }
+        if (best.competition) {
+          return { competition: best.competition, group: best.group || 'Grup - 1' };
+        }
+      }
+    }
+
+    // 3. Comprobar JSON de scraping si contenía datos
+    if (matchScraped?.competition) {
+      return { competition: matchScraped.competition, group: matchScraped.group || 'Grup - 1' };
+    }
+
+    return {
+      competition: t.competition || 'Lliga Preferent Infantil',
+      group: t.group || 'Grup - 1'
+    };
+  };
+
   if (data.teams.length > 0) {
     memoryTeams = data.teams.map((t) => {
       const match =
         (t.id && scrapedTeamsLookup.get(String(t.id))) ||
         (t.name && scrapedTeamsLookup.get(t.name.trim().toLowerCase()));
 
-      const competition = t.competition || match?.competition || 'Lliga Preferent Infantil';
-      const group = t.group || match?.group || 'Grup - 1';
+      const resolved = resolveTeamCompAndGroup(t, match);
       const crest_url = t.crest_url || match?.crest_url;
       const field_name = t.field_name || match?.field_name;
       const city = t.city && t.city !== '0' ? t.city : match?.city || 'Castelló';
@@ -297,8 +361,8 @@ function applyHeavyData(data: HeavyData) {
 
       return {
         ...t,
-        competition,
-        group,
+        competition: resolved.competition,
+        group: resolved.group,
         crest_url,
         field_name,
         city,

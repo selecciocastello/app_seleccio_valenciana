@@ -6,8 +6,12 @@
  * a la API se hacen desde dentro de esa página. Si la sesión caduca (403) se recarga la
  * página y se reintenta.
  *
- * Todas las peticiones pasan por un limitador global y, ante un 429, se pausan todas el
- * tiempo que indique retry_after antes de reintentar. La FFCV además limita el total de
+ * Todas las peticiones pasan por un limitador global (~20/min con variación aleatoria) y,
+ * ante un 429, se pausan todas el tiempo que indique retry_after antes de reintentar.
+ * Ante un bloqueo por IP (IP_ABUSE_*) la pausa crece con cada bloqueo seguido y no se
+ * recarga la página (eso son más peticiones y alarga el bloqueo); si la IP sigue
+ * bloqueada tras IP_BLOCK_MAX_STREAK pausas, se deja de pedir nada a la FFCV en esta
+ * ejecución y las peticiones devuelven 429 al momento. La FFCV además limita el total de
  * peticiones por sesión (429 SESSION_RATE_LIMIT): la sesión se renueva cada
  * SESSION_MAX_REQUESTS peticiones y, si aun así se agota, se abre una nueva al momento. Los 5xx ("upstream temporalmente
  * degradado") se reintentan con espera creciente.
@@ -23,7 +27,11 @@ const { chromium } = require('playwright');
 
 const FFCV_HOME = 'https://ffcv.es/competiciones/';
 const REQUEST_TIMEOUT_MS = 30000;
-const MIN_REQUEST_INTERVAL_MS = 1050; // ~57 peticiones/minuto para evitar IP_ABUSE_BLOCK de la FFCV
+const MIN_REQUEST_INTERVAL_MS = 2500; // + hasta REQUEST_JITTER_MS: ~20 peticiones/minuto
+const REQUEST_JITTER_MS = 1500;
+// Pausa ante el 1º, 2º, 3º... bloqueo por IP seguido (se reinicia con la primera respuesta buena)
+const IP_BLOCK_WAITS_S = [90, 300, 600, 900, 900];
+const IP_BLOCK_MAX_STREAK = IP_BLOCK_WAITS_S.length;
 const MAX_RATE_LIMIT_RETRIES = 10;
 const MAX_SERVER_ERROR_RETRIES = 4;
 const MAX_SESSION_RENEWALS = 5;
@@ -35,7 +43,7 @@ let nextRequestAt = 0;
 async function acquireRequestSlot() {
   const now = Date.now();
   const slot = Math.max(now, nextRequestAt);
-  nextRequestAt = slot + MIN_REQUEST_INTERVAL_MS;
+  nextRequestAt = slot + MIN_REQUEST_INTERVAL_MS + Math.floor(Math.random() * REQUEST_JITTER_MS);
   if (slot > now) await sleep(slot - now);
 }
 
@@ -46,6 +54,9 @@ let sessionGen = 0;
 let opening = null;
 let resettingGen = -1;
 let sessionRequests = 0;
+let ipBlockStreak = 0;
+let ipBlockedAt = 0; // cuándo empezó la última pausa por bloqueo de IP
+let ipBanned = false;
 
 async function openSession() {
   if (!browser) browser = await chromium.launch();
@@ -117,13 +128,14 @@ async function rawGet(endpoint) {
   await acquireRequestSlot();
   sessionRequests++;
   const gen = sessionGen;
+  const sentAt = Date.now();
   const res = await page.evaluate(async ({ url, token, timeout }) => {
     const headers = { 'X-Requested-With': 'XMLHttpRequest' };
     if (token) headers['X-FFCV-Page-Token'] = token;
     const r = await fetch(url, { headers, credentials: 'include', signal: AbortSignal.timeout(timeout) });
     return { status: r.status, text: await r.text() };
   }, { url: `/competiciones/api/${endpoint}`, token: pageToken, timeout: REQUEST_TIMEOUT_MS });
-  return { ...res, gen };
+  return { ...res, gen, sentAt };
 }
 
 /**
@@ -138,6 +150,7 @@ async function ffcvApiGet(endpoint) {
   let sessionReset = false;
   let sessionRenewals = 0;
   while (true) {
+    if (ipBanned) return { status: 429, data: null };
     res = await rawGet(endpoint);
     data = null;
     try { data = JSON.parse(res.text); } catch (e) {}
@@ -153,20 +166,31 @@ async function ffcvApiGet(endpoint) {
       await resetSession(res.gen);
       continue;
     }
+    const isIpAbuse = res.status === 429 && String(data?.reason_code || '').startsWith('IP_ABUSE');
+    if (isIpAbuse) {
+      // Si la petición salió antes de empezar la pausa actual, el bloqueo ya está contado
+      if (res.sentAt >= ipBlockedAt) {
+        if (ipBlockStreak >= IP_BLOCK_MAX_STREAK) {
+          ipBanned = true;
+          console.warn(`        🛑 La FFCV sigue bloqueando la IP tras ${IP_BLOCK_MAX_STREAK} pausas. No se harán más peticiones en esta ejecución.`);
+          break;
+        }
+        const retryAfter = parseInt(data?.retry_after, 10) || 0;
+        const waitSecs = Math.max(retryAfter + 5, IP_BLOCK_WAITS_S[ipBlockStreak]);
+        ipBlockStreak++;
+        ipBlockedAt = Date.now();
+        nextRequestAt = Math.max(nextRequestAt, ipBlockedAt + waitSecs * 1000);
+        console.warn(`        ⏳ IP bloqueada por la FFCV (${data.reason_code}, ${ipBlockStreak}/${IP_BLOCK_MAX_STREAK}). Pausa de ${waitSecs}s...`);
+      }
+      // rawGet espera a nextRequestAt; misma sesión, sin recargar la página
+      continue;
+    }
     if (res.status === 429 && rateLimited < MAX_RATE_LIMIT_RETRIES) {
       rateLimited++;
-      const isIpAbuse = data?.reason_code === 'IP_ABUSE_BLOCK' || data?.reason_code === 'IP_ABUSE_LIMIT';
-      const waitSecs = (parseInt(data?.retry_after, 10) || (isIpAbuse ? 75 : 60)) + 3;
+      const waitSecs = (parseInt(data?.retry_after, 10) || 60) + 3;
       if (Date.now() + waitSecs * 1000 > nextRequestAt) {
         console.warn(`        ⏳ Límite de peticiones FFCV alcanzado (${data?.reason_code || '429'}). Esperando ${waitSecs}s...`);
         nextRequestAt = Date.now() + waitSecs * 1000;
-      }
-      // Esperar activamente la penalización ANTES de abrir nueva sesión o reintentar
-      await sleep(waitSecs * 1000);
-
-      if (isIpAbuse && sessionRenewals < MAX_SESSION_RENEWALS) {
-        sessionRenewals++;
-        await resetSession(res.gen);
       }
       continue;
     }
@@ -177,6 +201,7 @@ async function ffcvApiGet(endpoint) {
     }
     break;
   }
+  if (res.status === 200) ipBlockStreak = 0;
   if (res.status !== 200) {
     console.warn(`        ⚠️ HTTP ${res.status} en ${endpoint}: ${res.text.slice(0, 200)}`);
   }

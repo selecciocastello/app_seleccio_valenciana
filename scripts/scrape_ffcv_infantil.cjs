@@ -16,9 +16,10 @@
  *   --limit-teams <n>     Limitar número de equipos por grupo para pruebas
  *   --limit-players <n>   Limitar número de jugadores por equipo para pruebas
  *   --all-matches         Volver a descargar también las jornadas ya jugadas
+ *   --all-players         Volver a descargar la ficha de todos los jugadores (sin rotación)
  *
  * Todos los datos se obtienen de la API JSON de ffcv.es (la misma que usa su web) a
- * través de un navegador Playwright (ver ffcv_client.cjs). La FFCV limita a ~240 peticiones/minuto por IP (HTTP 429
+ * través de un navegador Playwright (ver ffcv_client.cjs). La FFCV limita las peticiones por IP (HTTP 429
  * con retry_after), así que todas las peticiones pasan por un limitador global.
  *
  * Descarga incremental:
@@ -27,6 +28,9 @@
  *  - Jugadores: los nuevos se descargan completos (ficha + historial); de los que ya
  *    existen solo se pide la ficha (equipo, dorsal, foto, estadísticas) y en Supabase
  *    solo se escriben los que han cambiado. Los que ya no están en ninguna plantilla se borran.
+ *    Para no saturar a la FFCV, la ficha de un jugador ya conocido que sigue en el mismo
+ *    equipo se pide cada PLAYER_REFRESH_WEEKS semanas (por turnos: cada semana toca a una
+ *    parte de los jugadores); el resto de semanas se reutiliza lo que hay en scraped_players.json.
  *  - Todo lo que falla (grupo, jornada, equipo o jugador) se apunta y se reintenta al
  *    final de la descarga.
  */
@@ -80,6 +84,11 @@ const limitTeams = limitTeamsIdx !== -1 ? parseInt(args[limitTeamsIdx + 1], 10) 
 const limitPlayersIdx = args.indexOf('--limit-players');
 const limitPlayers = limitPlayersIdx !== -1 ? parseInt(args[limitPlayersIdx + 1], 10) : Infinity;
 const refreshAllMatches = args.includes('--all-matches');
+const refreshAllPlayers = args.includes('--all-players');
+
+// Cada cuántas semanas se vuelve a pedir la ficha de un jugador ya conocido
+const PLAYER_REFRESH_WEEKS = 2;
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 const RETRY_ROUNDS = 3;
 const RETRY_PAUSE_MS = 20000;
@@ -95,6 +104,8 @@ async function ffcvFetch(endpoint, maxRetries = 5) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const res = await ffcvApiGet(endpoint);
+      // Los 429 ya los ha esperado y reintentado ffcv_client.cjs: insistir solo alarga el bloqueo
+      if (res.status === 429) return null;
       if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
       return res.data;
     } catch (err) {
@@ -1296,8 +1307,11 @@ function readJsonArray(filePath) {
       dbPlayers = await loadDbPlayers(supabase);
       const manualPositions = supabase ? await fetchManualPositions(supabase) : new Map();
       const knownPlayers = new Map();
+      const previousRecords = new Map(); // registro completo del último scraping (JSON)
       for (const p of readJsonArray(path.join(dataDir, 'scraped_players.json'))) {
-        if (p.ffcv_player_id) knownPlayers.set(String(p.ffcv_player_id), p);
+        if (!p.ffcv_player_id) continue;
+        knownPlayers.set(String(p.ffcv_player_id), p);
+        previousRecords.set(String(p.ffcv_player_id), p);
       }
       for (const [id, row] of dbPlayers || []) {
         const fromJson = knownPlayers.get(id);
@@ -1316,10 +1330,36 @@ function readJsonArray(filePath) {
         console.log(`        ${player.full_name} -> ${player.infantil_year}${extra ? ` (${extra})` : ''}`);
       };
 
+      /**
+       * Registro anterior reutilizable sin pedir nada a la FFCV: jugador ya conocido, en el
+       * mismo equipo, descargado hace menos de PLAYER_REFRESH_WEEKS semanas y al que no le
+       * toca turno esta semana (el turno sale del código del jugador, así cada semana se
+       * refresca una parte distinta de la plantilla).
+       */
+      const reusableRecord = (id, codEquipo, isNew) => {
+        if (refreshAllPlayers || isNew) return null;
+        const prev = previousRecords.get(id);
+        if (!prev || prev.team_id !== `ffcv-team-${codEquipo}` || !prev.scraped_at) return null;
+        if (!Array.isArray(prev.history) || prev.history.length === 0) return null;
+        const age = Date.now() - new Date(prev.scraped_at).getTime();
+        if (!(age >= 0 && age < PLAYER_REFRESH_WEEKS * WEEK_MS - 12 * 60 * 60 * 1000)) return null;
+        const week = Math.floor(Date.now() / WEEK_MS);
+        if ((week + Number(id)) % PLAYER_REFRESH_WEEKS === 0) return null;
+        return prev;
+      };
+      let reusedPlayers = 0;
+
       const processPlayer = async (ctx) => {
         const id = String(ctx.codJugador);
         const known = knownPlayers.get(id);
         const isNew = !(dbPlayers ? dbPlayers.has(id) : known);
+
+        const prev = reusableRecord(id, ctx.codEquipo, isNew);
+        if (prev) {
+          playersById.set(id, { ...prev, team: ctx.nombreEquipo, competition: ctx.comp.name, group: ctx.grp.name });
+          reusedPlayers++;
+          return;
+        }
         let lastRecord = null;
 
         const run = async () => {
@@ -1377,9 +1417,13 @@ function readJsonArray(filePath) {
         const newCount = playersToScrape.filter((j) => !(dbPlayers ? dbPlayers.has(String(j.cod_jugador)) : knownPlayers.has(String(j.cod_jugador)))).length;
         console.log(`        Plantilla: ${jugadores.length} jugadores (${newCount} nuevos).`);
 
-        await mapWithConcurrency(playersToScrape, 2, (j) =>
+        const reusedBefore = reusedPlayers;
+        await mapWithConcurrency(playersToScrape, 1, (j) =>
           processPlayer({ codJugador: j.cod_jugador, nombreJugador: j.nombre, codEquipo, nombreEquipo, comp, grp })
         );
+        if (reusedPlayers > reusedBefore) {
+          console.log(`        ♻️ ${reusedPlayers - reusedBefore} jugadores sin cambios de equipo reutilizados (se refrescan por turnos cada ${PLAYER_REFRESH_WEEKS} semanas).`);
+        }
 
         // Guardado progresivo por equipo local (JSON)
         fs.writeFileSync(path.join(dataDir, 'scraped_players.json'), JSON.stringify([...playersById.values()], null, 2), 'utf8');

@@ -538,5 +538,23 @@
     "group": "Grup - 1",
     "cod_grupo": "905431913",
     "players_count": 16
+  },
+  {
+    "id": "ffcv-team-16507",
+    "ffcv_cod": "16507",
+    "name": "C.D. Almazora 'A'",
+    "club": "C.D. Almazora",
+    "crest_url": "https://appwebffcv.novanet.es/pnfg/pimg/Clubes/00100_0074502500_CD_Almazora.png?nova=1",
+    "field_name": "Campo Mpal. Jose Manuel Pesudo F-11 Almassora ",
+    "field_code": "5260",
+    "address": "Carrer de Sant Joan, 15",
+    "city": "0",
+    "province": "Otra",
+    "web": null,
+    "competition": "Primera Infantil",
+    "cod_competicion": "905431912",
+    "group": "Grup - 1",
+    "cod_grupo": "905431913",
+    "players_count": 19
   }
 ]

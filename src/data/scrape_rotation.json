@@ -1,0 +1,1058 @@
+{
+  "next_cod": "18522",
+  "cursor": 25,
+  "cycle": 1,
+  "cycle_started_at": "2026-10-15",
+  "teams_per_run": 25,
+  "total_teams": 145,
+  "pending": [],
+  "last_run": {
+    "date": "2026-10-15",
+    "teams": [
+      "14890",
+      "15122",
+      "15644",
+      "15666",
+      "16280",
+      "16894",
+      "17275",
+      "17951",
+      "18001",
+      "18135",
+      "19764",
+      "25093",
+      "26217",
+      "26270",
+      "26426",
+      "297493",
+      "15646",
+      "15807",
+      "15835",
+      "16470",
+      "16507",
+      "17231",
+      "17437",
+      "17782",
+      "18002"
+    ],
+    "failed": [],
+    "closed_cycle": false
+  },
+  "teams": [
+    {
+      "cod": "14890",
+      "name": "C.F. Inter San José Valencia 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074501628_CF_Inter_San_Jos__Valencia.png?nova=1",
+      "comp_id": "905431907",
+      "grp_id": "905431908"
+    },
+    {
+      "cod": "15122",
+      "name": "F.B. Sagunto 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074818507_eecde343_6f3c_4455_b510_ecaad73e6e6d.jpeg?nova=1",
+      "comp_id": "905431907",
+      "grp_id": "905431908"
+    },
+    {
+      "cod": "15644",
+      "name": "C.F. Promesas Castalia 'A'",
+      "url_img": "/pnfg/var/docs/1819/DOCS/20188/28/a3caca6cd10e3e9036789abd3119d7ad.jpg?nova=1",
+      "comp_id": "905431907",
+      "grp_id": "905431908"
+    },
+    {
+      "cod": "15666",
+      "name": "C.F. Benicarló B.F. 'A'",
+      "url_img": "/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201211/27/12046265.jpg?nova=1",
+      "comp_id": "905431907",
+      "grp_id": "905431908"
+    },
+    {
+      "cod": "16280",
+      "name": "C.F. Torre Levante 'A'",
+      "url_img": "/pnfg/var/docs/anterior/1213/DOCS/20136/26/466c2e6dc4c03166fca4274704fdfa38_glz2XH8R.jpg?nova=1",
+      "comp_id": "905431907",
+      "grp_id": "905431908"
+    },
+    {
+      "cod": "16894",
+      "name": "C.F.B. Ciutat de València 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074533615_escudo.png?nova=1",
+      "comp_id": "905431907",
+      "grp_id": "905431908"
+    },
+    {
+      "cod": "17275",
+      "name": "Villarreal C.F. 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074501398_Villarreal_CF.png?nova=1",
+      "comp_id": "905431907",
+      "grp_id": "905431908"
+    },
+    {
+      "cod": "17951",
+      "name": "Alqueries C.F. 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074502518_Alqueries_CF.png?nova=1",
+      "comp_id": "905431907",
+      "grp_id": "905431908"
+    },
+    {
+      "cod": "18001",
+      "name": "C.D. Roda 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074816588_CDRoda_Logo_2023_Negro_HQ.png?nova=1",
+      "comp_id": "905431907",
+      "grp_id": "905431908"
+    },
+    {
+      "cod": "18135",
+      "name": "C.F. Rafalafena de Castellón 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074601165_IMG_1867_ACTUAL.jpg?nova=1",
+      "comp_id": "905431907",
+      "grp_id": "905431908"
+    },
+    {
+      "cod": "19764",
+      "name": "F.B.U.E. Atlètic Amistat 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074500865_escudoFB.jpg?nova=1",
+      "comp_id": "905431907",
+      "grp_id": "905431908"
+    },
+    {
+      "cod": "25093",
+      "name": "C.F. At. Moncadense 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074787649_CF_At._Moncadense.png?nova=1",
+      "comp_id": "905431907",
+      "grp_id": "905431908"
+    },
+    {
+      "cod": "26217",
+      "name": "Santa Bárbara Platges d'Alboraia C.F. 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074501479_ESCUDO_SANTA_BARBARA.png?nova=1",
+      "comp_id": "905431907",
+      "grp_id": "905431908"
+    },
+    {
+      "cod": "26270",
+      "name": "U.D. Rocafort C.F. 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074496834_escudo_club.jpg?nova=1",
+      "comp_id": "905431907",
+      "grp_id": "905431908"
+    },
+    {
+      "cod": "26426",
+      "name": "C.F. Atletico Cabañal 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074744569_foto_de_perfil_de_LinkedIn_moderno_oficina.PNG?nova=1",
+      "comp_id": "905431907",
+      "grp_id": "905431908"
+    },
+    {
+      "cod": "297493",
+      "name": "Ath. Massamagrell C.F. 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074558339_1730476916180.jpg?nova=1",
+      "comp_id": "905431907",
+      "grp_id": "905431908"
+    },
+    {
+      "cod": "15646",
+      "name": "C.F. Promesas Castalia 'B'",
+      "url_img": "/pnfg/var/docs/1819/DOCS/20188/28/a3caca6cd10e3e9036789abd3119d7ad.jpg?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431913"
+    },
+    {
+      "cod": "15807",
+      "name": "Sp. de Castelló 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074479917_Logo_Sporting.png?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431913"
+    },
+    {
+      "cod": "15835",
+      "name": "C.D. L'Alcora 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074812184_ESCUDO_60_A__OS_BIEN_CORRECTO_SIN_TANTO_FALLO_4.png?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431913"
+    },
+    {
+      "cod": "16470",
+      "name": "C.D. Onda 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074520684_CD_Onda.png?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431913"
+    },
+    {
+      "cod": "16507",
+      "name": "C.D. Almazora 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074502500_CD_Almazora.png?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431913"
+    },
+    {
+      "cod": "17231",
+      "name": "C.D. Castellón 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074501622_CD_Castell_n.png?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431913"
+    },
+    {
+      "cod": "17437",
+      "name": "C.D. Benicásim 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074502670_escudoNovanet.jpg?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431913"
+    },
+    {
+      "cod": "17782",
+      "name": "Primer Toque C.F. 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074481054_PRIMER_TOQUE_CF_ESCUDO.jpg?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431913"
+    },
+    {
+      "cod": "18002",
+      "name": "C.D. Roda 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074816588_CDRoda_Logo_2023_Negro_HQ.png?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431913"
+    },
+    {
+      "cod": "18522",
+      "name": "Esportiu Vila-real 'A'",
+      "url_img": "/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201211/14/12043583.jpg?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431913"
+    },
+    {
+      "cod": "18633",
+      "name": "C.D. Drac Castellón 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074480034_ESCUDO_DRAC.jpg?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431913"
+    },
+    {
+      "cod": "21954",
+      "name": "Andiamo Vila-Real C.F. 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074536386_Andiamo.jpg?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431913"
+    },
+    {
+      "cod": "27864",
+      "name": "C.F. At. Burriana - Salesianos 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074601073_nuevo_escudo_atbs.PNG?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431913"
+    },
+    {
+      "cod": "297333",
+      "name": "C.D. Burriana F.B. 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074902306_escudo_66px.jpg?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431913"
+    },
+    {
+      "cod": "903635137",
+      "name": "C.F. Nou Jove Castelló-Instalaciones R.A. 2021 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074537170_1000174439.jpg?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431913"
+    },
+    {
+      "cod": "903642663",
+      "name": "Vinaròs C.F. 'A'",
+      "url_img": "/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201211/27/12046262.jpg?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431913"
+    },
+    {
+      "cod": "14505",
+      "name": "C.D.F. Canet 'A'",
+      "url_img": "/pnfg/var/docs/anterior/1213/DOCS/20136/25/a4c64ced072028ba1426cd403d052b0a_zg0Z4lSk.jpg?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431914"
+    },
+    {
+      "cod": "14639",
+      "name": "At. Saguntino 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074798020_Escudo_png__1_.png?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431914"
+    },
+    {
+      "cod": "14651",
+      "name": "C.D. Acero 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074568858_logo_CDA.png?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431914"
+    },
+    {
+      "cod": "15202",
+      "name": "Rafelbunyol C.F. 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074501373_Rafelbunyol_CF.png?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431914"
+    },
+    {
+      "cod": "15408",
+      "name": "El Puig C.E. 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074491385_logo_el_puig_c.e..jpg?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431914"
+    },
+    {
+      "cod": "16454",
+      "name": "C.F. Nules 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074501380_ESC_C.F._NULES.png?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431914"
+    },
+    {
+      "cod": "16488",
+      "name": "C.D. Segorbe 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074491094_Escudo_CD_Segorbe.png?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431914"
+    },
+    {
+      "cod": "17783",
+      "name": "Primer Toque C.F. 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074481054_PRIMER_TOQUE_CF_ESCUDO.jpg?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431914"
+    },
+    {
+      "cod": "18349",
+      "name": "Club Almenara Atlètic 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074501367_Club_Almenara_Atl_tic.png?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431914"
+    },
+    {
+      "cod": "18521",
+      "name": "Esportiu Vila-real 'B'",
+      "url_img": "/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201211/14/12043583.jpg?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431914"
+    },
+    {
+      "cod": "20961",
+      "name": "C.D. Roda 'D'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074816588_CDRoda_Logo_2023_Negro_HQ.png?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431914"
+    },
+    {
+      "cod": "23605",
+      "name": "F.B. Sagunto 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074818507_eecde343_6f3c_4455_b510_ecaad73e6e6d.jpeg?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431914"
+    },
+    {
+      "cod": "24092",
+      "name": "Foios Atlètic C.F. 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074600404_Foios_Atletic___Escudos_FOIOS_aaff_color_1.jpg?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431914"
+    },
+    {
+      "cod": "27040",
+      "name": "C.F. At. Burriana - Salesianos 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074601073_nuevo_escudo_atbs.PNG?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431914"
+    },
+    {
+      "cod": "27588",
+      "name": "U.D. Vall de Uxó 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074819602_escut_nou_rosco_blanc__1_.jpg?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431914"
+    },
+    {
+      "cod": "28400",
+      "name": "C.F. At. Gilet 'A'",
+      "url_img": "/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201306/21/12080863.jpg?nova=1",
+      "comp_id": "905431912",
+      "grp_id": "905431914"
+    },
+    {
+      "cod": "15667",
+      "name": "C.F. Benicarló B.F. 'B'",
+      "url_img": "/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201211/27/12046265.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431649"
+    },
+    {
+      "cod": "17449",
+      "name": "A.C.D. Peñíscola 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074532260_ESCUDO_A_COLOR_ACD.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431649"
+    },
+    {
+      "cod": "17611",
+      "name": "C.D. Cabanes 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074480064_Escudo_CD_Cabanes.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431649"
+    },
+    {
+      "cod": "17963",
+      "name": "Orpesa C.F. 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074541596_ESCUDO_VECTOR__1_.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431649"
+    },
+    {
+      "cod": "18741",
+      "name": "Renomar Els Ports F.C. 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074500893_logo_els_ports__1_.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431649"
+    },
+    {
+      "cod": "22179",
+      "name": "C.F. Torreblanca",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074496024_ESCUDO_CF_TORREBLANCA.JPG?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431649"
+    },
+    {
+      "cod": "22854",
+      "name": "C.D. Vall D'Alba 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074501370_CD_Vall_d_Alba.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431649"
+    },
+    {
+      "cod": "23073",
+      "name": "C.D. L'Alcora 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074812184_ESCUDO_60_A__OS_BIEN_CORRECTO_SIN_TANTO_FALLO_4.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431649"
+    },
+    {
+      "cod": "25947",
+      "name": "C. F. At. Baix Maestrat 'A'",
+      "url_img": "/pnfg/var/docs/1819/DOCS/201810/15/7b390674c38c9967567aad86a587e218.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431649"
+    },
+    {
+      "cod": "900448324",
+      "name": "C.F. Alcalà 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074600296_IMG_1899.jpeg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431649"
+    },
+    {
+      "cod": "900467501",
+      "name": "U.D. Sant Mateu",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074486530_ESCUT_UD_SANT_MATEU.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431649"
+    },
+    {
+      "cod": "900728089",
+      "name": "C.D. Benicásim 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074502670_escudoNovanet.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431649"
+    },
+    {
+      "cod": "903642665",
+      "name": "Vinaròs C.F. 'B'",
+      "url_img": "/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201211/27/12046262.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431649"
+    },
+    {
+      "cod": "15668",
+      "name": "C.F. Benicarló B.F. 'C'",
+      "url_img": "/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201211/27/12046265.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431650"
+    },
+    {
+      "cod": "18634",
+      "name": "C.D. Drac Castellón 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074480034_ESCUDO_DRAC.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431650"
+    },
+    {
+      "cod": "19354",
+      "name": "Primer Toque C.F. 'D'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074481054_PRIMER_TOQUE_CF_ESCUDO.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431650"
+    },
+    {
+      "cod": "20251",
+      "name": "C.D. San Lorenzo de Castellón 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074820051_SAN_LORENZO_FONDO_BLANCO_Mesa_de_trabajo_1.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431650"
+    },
+    {
+      "cod": "24973",
+      "name": "Orpesa C.F. 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074541596_ESCUDO_VECTOR__1_.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431650"
+    },
+    {
+      "cod": "26664",
+      "name": "C.F. Fomento Castellón 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074645882_ESCUDO_C.F.F.C..jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431650"
+    },
+    {
+      "cod": "26702",
+      "name": "C.D. Moreres 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074529572_Moreres_10_aniversario.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431650"
+    },
+    {
+      "cod": "26817",
+      "name": "C.D. Cabanes 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074480064_Escudo_CD_Cabanes.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431650"
+    },
+    {
+      "cod": "297863",
+      "name": "C.E. Nou Sequiol 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074813960_ESCUDO_NOU_SEQUIOL.jpeg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431650"
+    },
+    {
+      "cod": "27356897",
+      "name": "Vinaròs C.F 'C'",
+      "url_img": "/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201211/27/12046262.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431650"
+    },
+    {
+      "cod": "29547070",
+      "name": "C.D. Castellón S.A.D. 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074501622_CD_Castell_n.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431650"
+    },
+    {
+      "cod": "901361235",
+      "name": "C.D. Benicásim 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074502670_escudoNovanet.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431650"
+    },
+    {
+      "cod": "903758215",
+      "name": "A.C.D. Peñíscola 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074532260_ESCUDO_A_COLOR_ACD.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431650"
+    },
+    {
+      "cod": "905885841",
+      "name": "C.F. Alcalà 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074600296_IMG_1899.jpeg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431650"
+    },
+    {
+      "cod": "17619",
+      "name": "Deportes Tonín 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074547692_Nuevo_escudo_CD_Ton__n.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431651"
+    },
+    {
+      "cod": "21807",
+      "name": "C.F. San Pedro 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074529476_escut.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431651"
+    },
+    {
+      "cod": "22818",
+      "name": "C.F. Rafalafena de Castellón 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074601165_IMG_1867_ACTUAL.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431651"
+    },
+    {
+      "cod": "23595",
+      "name": "C.D. San Lorenzo de Castellón 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074820051_SAN_LORENZO_FONDO_BLANCO_Mesa_de_trabajo_1.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431651"
+    },
+    {
+      "cod": "24243",
+      "name": "Primer Toque C.F. 'E'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074481054_PRIMER_TOQUE_CF_ESCUDO.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431651"
+    },
+    {
+      "cod": "24280",
+      "name": "C.F. Fomento Castellón 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074645882_ESCUDO_C.F.F.C..jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431651"
+    },
+    {
+      "cod": "24869",
+      "name": "C.D. Moreres 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074529572_Moreres_10_aniversario.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431651"
+    },
+    {
+      "cod": "26035",
+      "name": "C.D. La Magdalena 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074812040_Escudo_nuevo.jpeg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431651"
+    },
+    {
+      "cod": "26467",
+      "name": "C.D. Drac Castellón 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074480034_ESCUDO_DRAC.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431651"
+    },
+    {
+      "cod": "297294",
+      "name": "C.D. Roda 'F'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074816588_CDRoda_Logo_2023_Negro_HQ.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431651"
+    },
+    {
+      "cod": "27848942",
+      "name": "Vinaròs C.F 'D'",
+      "url_img": "/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201211/27/12046262.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431651"
+    },
+    {
+      "cod": "903635138",
+      "name": "C.F. Nou Jove Castelló-Instalaciones R.A. 2021 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074537170_1000174439.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431651"
+    },
+    {
+      "cod": "903783772",
+      "name": "C.D. Benicásim 'D'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074502670_escudoNovanet.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431651"
+    },
+    {
+      "cod": "905451276",
+      "name": "C.F. Racing de Castellón 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074587494_IMG_20250318_WA0000.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431651"
+    },
+    {
+      "cod": "17584",
+      "name": "C.F. San Pedro 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074529476_escut.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431646"
+    },
+    {
+      "cod": "18520",
+      "name": "Esportiu Vila-real 'C'",
+      "url_img": "/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201211/14/12043583.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431646"
+    },
+    {
+      "cod": "22099",
+      "name": "Deportes Tonín 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074547692_Nuevo_escudo_CD_Ton__n.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431646"
+    },
+    {
+      "cod": "24430",
+      "name": "Sp. de Castelló 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074479917_Logo_Sporting.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431646"
+    },
+    {
+      "cod": "27200",
+      "name": "U.D. Vall de Uxó 'E'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074819602_escut_nou_rosco_blanc__1_.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431646"
+    },
+    {
+      "cod": "297461",
+      "name": "C.D. San Lorenzo de Castellón 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074820051_SAN_LORENZO_FONDO_BLANCO_Mesa_de_trabajo_1.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431646"
+    },
+    {
+      "cod": "21941201",
+      "name": "C.F. Joventut Almassora 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074531248_Escudo_Sin_fondo_alta_definicion.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431646"
+    },
+    {
+      "cod": "27525625",
+      "name": "C.E. Nou Sequiol 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074813960_ESCUDO_NOU_SEQUIOL.jpeg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431646"
+    },
+    {
+      "cod": "30287991",
+      "name": "C.D. Onda 'E'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074520684_CD_Onda.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431646"
+    },
+    {
+      "cod": "903519482",
+      "name": "C.D. Almazora 'D'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074502500_CD_Almazora.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431646"
+    },
+    {
+      "cod": "903611901",
+      "name": "C.D. Drac Castellón 'D'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074480034_ESCUDO_DRAC.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431646"
+    },
+    {
+      "cod": "903643223",
+      "name": "C.D. Burriana F.B. 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074902306_escudo_66px.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431646"
+    },
+    {
+      "cod": "905538057",
+      "name": "C.D. Benicásim 'E'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074502670_escudoNovanet.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431646"
+    },
+    {
+      "cod": "905645575",
+      "name": "C.F. Nou Jove Castelló-Instalaciones R.A. 2021 'D'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074537170_1000174439.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431646"
+    },
+    {
+      "cod": "16472",
+      "name": "C.D. Onda 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074520684_CD_Onda.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431647"
+    },
+    {
+      "cod": "16508",
+      "name": "C.D. Almazora 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074502500_CD_Almazora.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431647"
+    },
+    {
+      "cod": "18136",
+      "name": "C.F. Rafalafena de Castellón 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074601165_IMG_1867_ACTUAL.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431647"
+    },
+    {
+      "cod": "18523",
+      "name": "Esportiu Vila-real 'D'",
+      "url_img": "/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201211/14/12043583.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431647"
+    },
+    {
+      "cod": "20291",
+      "name": "C.F. Joventut Almassora 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074531248_Escudo_Sin_fondo_alta_definicion.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431647"
+    },
+    {
+      "cod": "22928",
+      "name": "C.D. Roda 'E'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074816588_CDRoda_Logo_2023_Negro_HQ.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431647"
+    },
+    {
+      "cod": "26455",
+      "name": "C.F. Nou Jove Castelló-Instalaciones R.A. 2021 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074537170_1000174439.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431647"
+    },
+    {
+      "cod": "27080",
+      "name": "C.D. Burriana F.B. 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074902306_escudo_66px.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431647"
+    },
+    {
+      "cod": "27867",
+      "name": "U.D. Vall de Uxó 'D'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074819602_escut_nou_rosco_blanc__1_.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431647"
+    },
+    {
+      "cod": "29518768",
+      "name": "C.F. Racing de Castellón 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074587494_IMG_20250318_WA0000.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431647"
+    },
+    {
+      "cod": "29542354",
+      "name": "C.F. At. Burriana - Salesianos 'D'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074601073_nuevo_escudo_atbs.PNG?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431647"
+    },
+    {
+      "cod": "900438578",
+      "name": "C.F. San Pedro 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074529476_escut.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431647"
+    },
+    {
+      "cod": "900480624",
+      "name": "Andiamo Vila-Real C.F. 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074536386_Andiamo.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431647"
+    },
+    {
+      "cod": "905668029",
+      "name": "Deportes Tonín 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074547692_Nuevo_escudo_CD_Ton__n.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431647"
+    },
+    {
+      "cod": "16563",
+      "name": "C.D. Almazora 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074502500_CD_Almazora.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431648"
+    },
+    {
+      "cod": "17264",
+      "name": "U.D. Vall de Uxó 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074819602_escut_nou_rosco_blanc__1_.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431648"
+    },
+    {
+      "cod": "17276",
+      "name": "Villarreal C.F. 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074501398_Villarreal_CF.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431648"
+    },
+    {
+      "cod": "19545",
+      "name": "C.E. Vila d'Onda 'A'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074575243_CE_Vila_d_Onda.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431648"
+    },
+    {
+      "cod": "24386",
+      "name": "Andiamo Vila-Real C.F. 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074536386_Andiamo.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431648"
+    },
+    {
+      "cod": "25813",
+      "name": "C.D. Onda 'D'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074520684_CD_Onda.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431648"
+    },
+    {
+      "cod": "27865",
+      "name": "C.F. At. Burriana - Salesianos 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074601073_nuevo_escudo_atbs.PNG?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431648"
+    },
+    {
+      "cod": "297697",
+      "name": "C.F. Huracán Vila-Real",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074832492_Escudo_Huraca__769_n.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431648"
+    },
+    {
+      "cod": "900478096",
+      "name": "C.F. Joventut Almassora 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074531248_Escudo_Sin_fondo_alta_definicion.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431648"
+    },
+    {
+      "cod": "900484986",
+      "name": "C.D. L'Alcora 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074812184_ESCUDO_60_A__OS_BIEN_CORRECTO_SIN_TANTO_FALLO_4.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431648"
+    },
+    {
+      "cod": "901337219",
+      "name": "Esportiu Vila-real 'E'",
+      "url_img": "/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201211/14/12043583.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431648"
+    },
+    {
+      "cod": "905489315",
+      "name": "C.D. Segorbe 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074491094_Escudo_CD_Segorbe.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431648"
+    },
+    {
+      "cod": "906261359",
+      "name": "C.F. Nules 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074501380_ESC_C.F._NULES.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431648"
+    },
+    {
+      "cod": "906761357",
+      "name": "C.D. Burriana F.B. 'D'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074902306_escudo_66px.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "905431648"
+    },
+    {
+      "cod": "16455",
+      "name": "C.F. Nules 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074501380_ESC_C.F._NULES.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "906280708"
+    },
+    {
+      "cod": "16471",
+      "name": "C.D. Onda 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074520684_CD_Onda.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "906280708"
+    },
+    {
+      "cod": "16489",
+      "name": "C.D. Segorbe 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074491094_Escudo_CD_Segorbe.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "906280708"
+    },
+    {
+      "cod": "17263",
+      "name": "U.D. Vall de Uxó 'C'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074819602_escut_nou_rosco_blanc__1_.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "906280708"
+    },
+    {
+      "cod": "17952",
+      "name": "Alqueries C.F. 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074502518_Alqueries_CF.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "906280708"
+    },
+    {
+      "cod": "18150",
+      "name": "Artana C.F.",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074498934_escudo.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "906280708"
+    },
+    {
+      "cod": "19353",
+      "name": "C.F Platges de Moncofa",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074605963_Escudo_platges.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "906280708"
+    },
+    {
+      "cod": "24592",
+      "name": "C.E. Vila d'Onda 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074575243_CE_Vila_d_Onda.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "906280708"
+    },
+    {
+      "cod": "28363",
+      "name": "C.D. Betxí",
+      "url_img": "/pnfg/usr/local/projects/weblogic/repository/AS400/02/DOCS/201304/18/12073261.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "906280708"
+    },
+    {
+      "cod": "29584821",
+      "name": "La Vilavella C.F.",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074501366_ESC_LA_VILAVELLA_C.F..png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "906280708"
+    },
+    {
+      "cod": "900458547",
+      "name": "Club Almenara Atlètic 'B'",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074501367_Club_Almenara_Atl_tic.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "906280708"
+    },
+    {
+      "cod": "900463049",
+      "name": "C.D. Altura",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074602059_escudo.jfif?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "906280708"
+    },
+    {
+      "cod": "903703144",
+      "name": "Xilxes C.F.",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074492875_IMG_20230707_WA0004.jpg?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "906280708"
+    },
+    {
+      "cod": "906132640",
+      "name": "C.D. Jérica",
+      "url_img": "/pnfg/pimg/Clubes/00100_0074678269_IMG_2224.png?nova=1",
+      "comp_id": "905431645",
+      "grp_id": "906280708"
+    }
+  ]
+}

@@ -17,6 +17,9 @@
  *   --limit-players <n>   Limitar número de jugadores por equipo para pruebas
  *   --all-matches         Volver a descargar también las jornadas ya jugadas
  *   --all-players         Volver a descargar la ficha de todos los jugadores (sin rotación)
+ *   --rotation            Plantillas por turnos: en cada ejecución solo se procesan los siguientes
+ *                         equipos de la rueda (ver "Rotación de equipos" más abajo)
+ *   --teams-per-run <n>   Equipos por ejecución en modo --rotation (por defecto 25)
  *
  * Todos los datos se obtienen de la API JSON de ffcv.es (la misma que usa su web) a
  * través de un navegador Playwright (ver ffcv_client.cjs). La FFCV limita las peticiones por IP (HTTP 429
@@ -33,6 +36,15 @@
  *    parte de los jugadores); el resto de semanas se reutiliza lo que hay en scraped_players.json.
  *  - Todo lo que falla (grupo, jornada, equipo o jugador) se apunta y se reintenta al
  *    final de la descarga.
+ *
+ * Rotación de equipos (--rotation, workflow de lunes a viernes):
+ *  - Todos los equipos de las competiciones forman una lista fija (competición, grupo y código
+ *    de equipo). Cada ejecución procesa los siguientes --teams-per-run equipos desde donde se
+ *    quedó la anterior y, al llegar al final, vuelve a empezar (nuevo ciclo).
+ *  - El punto de la rueda se guarda en src/data/scrape_rotation.json. Los equipos que fallan
+ *    (o con jugadores que no se han podido descargar) quedan pendientes y van primero al día siguiente.
+ *  - Los equipos que no tocan conservan sus datos de scraped_players.json / scraped_teams.json.
+ *  - Los jugadores antiguos solo se revisan/borran al cerrar un ciclo completo sin pendientes.
  */
 
 const fs = require('fs');
@@ -85,6 +97,10 @@ const limitPlayersIdx = args.indexOf('--limit-players');
 const limitPlayers = limitPlayersIdx !== -1 ? parseInt(args[limitPlayersIdx + 1], 10) : Infinity;
 const refreshAllMatches = args.includes('--all-matches');
 const refreshAllPlayers = args.includes('--all-players');
+const rotation = args.includes('--rotation');
+const teamsPerRunIdx = args.indexOf('--teams-per-run');
+const TEAMS_PER_RUN = teamsPerRunIdx !== -1 ? Math.max(1, parseInt(args[teamsPerRunIdx + 1], 10) || 25) : 25;
+const ROTATION_FILE = 'scrape_rotation.json';
 
 // Cada cuántas semanas se vuelve a pedir la ficha de un jugador ya conocido
 const PLAYER_REFRESH_WEEKS = 2;
@@ -1065,6 +1081,15 @@ function readJsonArray(filePath) {
   }
 }
 
+function readJsonObject(filePath) {
+  try {
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return data && typeof data === 'object' && !Array.isArray(data) ? data : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 (async () => {
   console.log('=====================================================');
   console.log('⚽ SCRAPER FFCV INFANTIL - PARTIDOS, JUGADORES E HISTORIAL');
@@ -1088,6 +1113,13 @@ function readJsonArray(filePath) {
   ensureDir(dataDir);
 
   const currentMatches = () => [...matchesByJornada.values()].flatMap((v) => v.matches);
+
+  // Modo --rotation: jugadores de los equipos procesados en esta ejecución (los únicos que se
+  // escriben en Supabase al final), ids de todas las plantillas conocidas (para revisar antiguos)
+  // y guardado del punto de la rueda tras los reintentos.
+  const touchedPlayerIds = new Set();
+  let rosterPlayerIds = null;
+  let saveRotationState = null;
 
   try {
     const competitionsToScrape = [...TARGET_COMPETITIONS];
@@ -1330,6 +1362,9 @@ function readJsonArray(filePath) {
         console.log(`        ${player.full_name} -> ${player.infantil_year}${extra ? ` (${extra})` : ''}`);
       };
 
+      // Equipos con algún jugador que no se ha podido descargar (en rotación quedan pendientes)
+      const teamsWithFailedPlayers = new Set();
+
       /**
        * Registro anterior reutilizable sin pedir nada a la FFCV: jugador ya conocido, en el
        * mismo equipo, con foto, descargado hace menos de PLAYER_REFRESH_WEEKS semanas y al que no le
@@ -1384,6 +1419,7 @@ function readJsonArray(filePath) {
           // Si ya existía se deja como está; si es nuevo se da de alta con lo que se tenga
           if (!isNew || !lastRecord) keptPlayerIds.push(id);
           else playersById.set(id, lastRecord);
+          teamsWithFailedPlayers.add(String(ctx.codEquipo));
         });
       };
 
@@ -1419,6 +1455,15 @@ function readJsonArray(filePath) {
         const newCount = playersToScrape.filter((j) => !(dbPlayers ? dbPlayers.has(String(j.cod_jugador)) : knownPlayers.has(String(j.cod_jugador)))).length;
         console.log(`        Plantilla: ${jugadores.length} jugadores (${newCount} nuevos).`);
 
+        // Jugadores que constaban en este equipo (ejecución anterior) y ya no están en su plantilla
+        if (jugadores.length > 0) {
+          const rosterIds = new Set(jugadores.map((j) => String(j.cod_jugador)));
+          for (const [id, p] of playersById) {
+            if (p.team_id === `ffcv-team-${codEquipo}` && !rosterIds.has(id)) playersById.delete(id);
+          }
+        }
+        for (const j of playersToScrape) touchedPlayerIds.add(String(j.cod_jugador));
+
         const reusedBefore = reusedPlayers;
         await mapWithConcurrency(playersToScrape, 1, (j) =>
           processPlayer({ codJugador: j.cod_jugador, nombreJugador: j.nombre, codEquipo, nombreEquipo, comp, grp })
@@ -1442,21 +1487,28 @@ function readJsonArray(filePath) {
         return true;
       };
 
-      const teamTask = (comp, grp, eq) => {
+      const teamTask = (comp, grp, eq, onGiveUp = () => {}) => {
         const label = `Equipo ${eq.nombre} (${eq.codequipo})`;
         defer(label, () => processTeam(comp, grp, eq), () => {
           playersComplete = false;
           notUpdated.push(label);
+          onGiveUp();
         });
       };
 
-      /** Equipos de un grupo (vía clasificación). false si la FFCV no los ha devuelto. */
-      const processGroupTeams = async (comp, grp) => {
+      /** Equipos de un grupo según la clasificación, o null si la FFCV no los ha devuelto. */
+      const fetchGroupTeams = async (grp) => {
         const classifData = await ffcvFetch(`clasificaciones/clasificaciones_ajax.php?cod_grupo=${encodeURIComponent(grp.id)}&cod_jornada=1`);
         const equipos = Array.isArray(classifData?.clasificacion)
           ? classifData.clasificacion
           : (Array.isArray(classifData?.clasificaciones) ? classifData.clasificaciones : []);
-        if (equipos.length === 0) return false;
+        return equipos.length > 0 ? equipos : null;
+      };
+
+      /** Equipos de un grupo (vía clasificación). false si la FFCV no los ha devuelto. */
+      const processGroupTeams = async (comp, grp) => {
+        const equipos = await fetchGroupTeams(grp);
+        if (!equipos) return false;
 
         console.log(`     ${equipos.length} equipos en el grupo.`);
         const teamsToScrape = equipos.slice(0, limitTeams);
@@ -1475,17 +1527,148 @@ function readJsonArray(filePath) {
         return true;
       };
 
-      for (const comp of competitionsToScrape) {
-        console.log(`\n🏆 ${comp.name} (${comp.id})`);
-        for (const grp of comp.groups) {
-          console.log(`  🔹 Obteniendo equipos de ${grp.name}...`);
-          if (await processGroupTeams(comp, grp)) continue;
-          const label = `Equipos ${comp.name} ${grp.name}`;
-          console.log('     ⚠️ No se han podido obtener los equipos, se reintentará al final');
-          defer(label, () => processGroupTeams(comp, grp), () => {
-            playersComplete = false;
-            notUpdated.push(label);
-          });
+      /**
+       * Modo --rotation: procesa los siguientes TEAMS_PER_RUN equipos de la rueda (primero los
+       * pendientes del día anterior). El resto de equipos conserva lo que había en los JSON.
+       */
+      const runRotation = async () => {
+        const rotationPath = path.join(dataDir, ROTATION_FILE);
+        const state = readJsonObject(rotationPath) || {};
+        const cachedTeams = Array.isArray(state.teams) ? state.teams : [];
+
+        // 1. Lista completa de equipos en orden fijo (competición, grupo, código de equipo)
+        console.log('\n🔄 Modo rotación: obteniendo la lista de equipos de todos los grupos...');
+        const allTeams = [];
+        const seen = new Set();
+        let listComplete = true;
+        for (const comp of competitionsToScrape) {
+          for (const grp of comp.groups) {
+            let equipos = await fetchGroupTeams(grp);
+            if (!equipos) {
+              await sleep(RETRY_PAUSE_MS);
+              equipos = await fetchGroupTeams(grp);
+            }
+            let groupTeams;
+            if (equipos) {
+              groupTeams = equipos.map((eq) => ({ cod: String(eq.codequipo), name: eq.nombre, url_img: eq.url_img || null }));
+            } else {
+              // Sin respuesta: se usa la lista guardada del grupo para no descolocar la rueda
+              listComplete = false;
+              groupTeams = cachedTeams.filter((t) => t.grp_id === grp.id);
+              console.warn(`  ⚠️ ${comp.name} ${grp.name}: sin respuesta de la FFCV, se usan los ${groupTeams.length} equipos guardados.`);
+            }
+            groupTeams.sort((a, b) => Number(a.cod) - Number(b.cod) || a.cod.localeCompare(b.cod));
+            for (const t of groupTeams) {
+              if (!t.cod || seen.has(t.cod)) continue;
+              seen.add(t.cod);
+              allTeams.push({ cod: t.cod, name: t.name, url_img: t.url_img || null, comp_id: comp.id, grp_id: grp.id });
+            }
+          }
+        }
+        if (allTeams.length === 0) {
+          throw new Error('No se ha obtenido ningún equipo de la FFCV (¿acceso bloqueado?).');
+        }
+        const total = allTeams.length;
+        const byCod = new Map(allTeams.map((t) => [t.cod, t]));
+
+        // 2. Datos anteriores de los equipos que siguen en las competiciones
+        const teamIds = new Set(allTeams.map((t) => `ffcv-team-${t.cod}`));
+        for (const t of readJsonArray(path.join(dataDir, 'scraped_teams.json'))) {
+          if (byCod.has(String(t.ffcv_cod))) teamsByCode.set(String(t.ffcv_cod), t);
+        }
+        for (const p of readJsonArray(path.join(dataDir, 'scraped_players.json'))) {
+          if (p.ffcv_player_id && teamIds.has(p.team_id)) playersById.set(String(p.ffcv_player_id), p);
+        }
+
+        // 3. Tanda de hoy: pendientes primero y después los siguientes de la rueda
+        const start = byCod.has(String(state.next_cod))
+          ? allTeams.findIndex((t) => t.cod === String(state.next_cod))
+          : (Number.isInteger(state.cursor) && state.cursor >= 0 ? state.cursor % total : 0);
+        const pending = [...new Set((state.pending || []).map(String))].filter((c) => byCod.has(c));
+        const batch = pending.slice(0, TEAMS_PER_RUN).map((c) => byCod.get(c));
+        const carried = pending.slice(batch.length);
+        const inBatch = new Set(batch.map((t) => t.cod));
+        const fromPending = batch.length;
+        let idx = start;
+        let advanced = 0;
+        let wrapped = false;
+        while (batch.length < TEAMS_PER_RUN && advanced < total) {
+          const t = allTeams[idx];
+          if (!inBatch.has(t.cod)) {
+            batch.push(t);
+            inBatch.add(t.cod);
+          }
+          advanced++;
+          idx = (idx + 1) % total;
+          if (idx === 0) wrapped = true;
+        }
+        const cycle = Number.isInteger(state.cycle) ? state.cycle : 1;
+        const end = start + advanced;
+        const range = advanced === 0 ? 'ninguno' : end > total ? `${start + 1}-${total} y 1-${end - total}` : `${start + 1}-${end}`;
+        console.log(`   ${total} equipos en total. Ciclo ${cycle}: equipos ${range} de la rueda` +
+          `${fromPending ? ` + ${fromPending} pendiente(s) del día anterior` : ''}${carried.length ? ` (${carried.length} pendientes quedan para mañana)` : ''}.`);
+        if (wrapped) console.log('   🏁 Esta tanda cierra el ciclo: al terminar se revisan los jugadores antiguos.');
+
+        // Solo al cerrar un ciclo completo, con la lista entera y sin pendientes, se revisan antiguos
+        playersComplete = playersComplete && wrapped && listComplete && carried.length === 0;
+
+        // 4. Procesar la tanda
+        const compById = new Map(competitionsToScrape.map((c) => [c.id, c]));
+        const failedTeams = new Set();
+        for (let i = 0; i < batch.length; i++) {
+          const t = batch[i];
+          const comp = compById.get(t.comp_id);
+          const grp = comp.groups.find((g) => g.id === t.grp_id);
+          const eq = { codequipo: t.cod, nombre: t.name, url_img: t.url_img };
+          console.log(`\n     🏃 [${i + 1}/${batch.length}] ${comp.name} ${grp.name} · Equipo: ${t.name} (${t.cod})`);
+          if (!(await processTeam(comp, grp, eq))) {
+            console.log('        ⚠️ Sin respuesta de la FFCV, se reintentará al final');
+            teamTask(comp, grp, eq, () => failedTeams.add(t.cod));
+          }
+        }
+
+        rosterPlayerIds = () => [...playersById.keys()];
+        // Se llama tras los reintentos: guarda el punto de la rueda y los pendientes
+        saveRotationState = () => {
+          for (const cod of teamsWithFailedPlayers) if (inBatch.has(cod)) failedTeams.add(cod);
+          const nextPending = [...new Set([...carried, ...failedTeams])];
+          const nextState = {
+            next_cod: allTeams[idx].cod,
+            cursor: idx,
+            cycle: wrapped ? cycle + 1 : cycle,
+            cycle_started_at: wrapped ? today : (state.cycle_started_at || today),
+            teams_per_run: TEAMS_PER_RUN,
+            total_teams: total,
+            pending: nextPending,
+            last_run: {
+              date: today,
+              teams: batch.map((t) => t.cod),
+              failed: [...failedTeams],
+              closed_cycle: wrapped
+            },
+            teams: allTeams
+          };
+          fs.writeFileSync(rotationPath, JSON.stringify(nextState, null, 2), 'utf8');
+          console.log(`\n🔄 Rotación guardada: mañana se empieza por ${allTeams[idx].name} (${idx + 1}/${total})` +
+            `${nextPending.length ? `, con ${nextPending.length} equipo(s) pendiente(s) delante` : ''}.`);
+        };
+      };
+
+      if (rotation) {
+        await runRotation();
+      } else {
+        for (const comp of competitionsToScrape) {
+          console.log(`\n🏆 ${comp.name} (${comp.id})`);
+          for (const grp of comp.groups) {
+            console.log(`  🔹 Obteniendo equipos de ${grp.name}...`);
+            if (await processGroupTeams(comp, grp)) continue;
+            const label = `Equipos ${comp.name} ${grp.name}`;
+            console.log('     ⚠️ No se han podido obtener los equipos, se reintentará al final');
+            defer(label, () => processGroupTeams(comp, grp), () => {
+              playersComplete = false;
+              notUpdated.push(label);
+            });
+          }
         }
       }
     }
@@ -1496,11 +1679,17 @@ function readJsonArray(filePath) {
       console.warn(`\n⚠️ Siguen fallando tras ${RETRY_ROUNDS} reintentos (se mantienen los datos anteriores):`);
       for (const label of stillFailed) console.warn(`   - ${label}`);
     }
+    if (saveRotationState) saveRotationState();
 
     const allMatches = currentMatches();
     const matchesToSync = [...matchesByJornada.values()].filter((v) => v.refreshed).flatMap((v) => v.matches);
     const allTeams = [...teamsByCode.values()];
     const allPlayers = [...playersById.values()];
+    // En rotación solo se escriben en Supabase los jugadores de los equipos procesados hoy: los
+    // demás vienen del JSON anterior y no deben pisar lo que haya en la BD
+    const playersToSync = rotation
+      ? [...touchedPlayerIds].map((id) => playersById.get(id)).filter(Boolean)
+      : allPlayers;
 
     // ── 4. GUARDAR RESULTADOS LOCALES (JSON) ─────────────────────────────────────
     if (allMatches.length > 0) {
@@ -1535,7 +1724,11 @@ function readJsonArray(filePath) {
     if (allMatches.length === 0 && allTeams.length === 0) {
       throw new Error('No se ha obtenido ningún partido ni equipo de la FFCV (¿acceso bloqueado?). No se sincroniza nada.');
     }
-    await trySaveToSupabase(supabase, matchesToSync, allTeams, allPlayers, { playersComplete, dbPlayers, keptPlayerIds });
+    await trySaveToSupabase(supabase, matchesToSync, allTeams, playersToSync, {
+      playersComplete,
+      dbPlayers,
+      keptPlayerIds: rosterPlayerIds ? [...keptPlayerIds, ...rosterPlayerIds()] : keptPlayerIds
+    });
 
     if (notUpdated.length > 0) {
       console.warn(`\n⚠️ No actualizados en esta ejecución: ${notUpdated.join('; ')}`);

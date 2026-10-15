@@ -335,6 +335,280 @@ async function promotePlayers(supabase, playedIds) {
   return { inDb, promoted: toPromote };
 }
 
+// Orden de los estados que puede poner un analista: una valoración por dorsal nunca baja
+// a un jugador (si ya estaba Preseleccionado no pasa a Interesante).
+const STATUS_RANK = { Candidato: 0, Observado: 1, Interesante: 2, Preseleccionado: 3, Seleccionado: 4 };
+
+function mergedStatus(current, wanted) {
+  if (!wanted || !(wanted in STATUS_RANK)) return current === 'Candidato' || !current ? 'Observado' : current;
+  if (current && !(current in STATUS_RANK)) return current; // No seleccionado, Lesionado, Inactivo
+  return (STATUS_RANK[current] ?? -1) >= STATUS_RANK[wanted] ? current : wanted;
+}
+
+function appendNote(notes, line) {
+  if (!line) return notes || '';
+  if (notes && notes.includes(line)) return notes;
+  return [notes && notes.trim(), line].filter(Boolean).join('\n\n');
+}
+
+/** El nombre que ha oído el analista coincide si todas sus palabras están en el nombre del acta. */
+function nameMatches(actaName, heard) {
+  const words = normalizeName(heard).split(/\s+/).filter((w) => w.length >= 3);
+  if (words.length === 0) return false;
+  const actaWords = new Set(normalizeName(actaName).replace(/,/g, ' ').split(/\s+/));
+  return words.every((w) => actaWords.has(w));
+}
+
+/**
+ * Reconciliación de las valoraciones por dorsal de la agenda con el acta oficial del partido.
+ *
+ * El analista que no conoce al jugador lo valora por dorsal (identified_by 'dorsal'). Aquí se busca
+ * en el acta quién llevaba ese dorsal en ese equipo (o, si no aparece, quién tiene el nombre que
+ * apuntó) y se le pasan comentario, estrellas, estado y nota de voz:
+ *  - Si el jugador ya está en la BD, se le añade a su ficha.
+ *  - Si no está, se crea su ficha con los datos de la FFCV y la valoración.
+ * Las valoraciones de un jugador elegido de la plantilla (identified_by 'player') ya están en su
+ * ficha y no se tocan. Lo ya reconciliado tampoco se vuelve a aplicar.
+ *
+ * Compatibilidad con valoraciones antiguas: antes se aplicaban al jugador que tenía el dorsal en la
+ * plantilla (player_id) o a una ficha provisional "Dorsal #X". Si el acta dice que era otro, se quita
+ * el comentario de ese jugador y se borra la ficha provisional.
+ *
+ * Devuelve true si queda alguna valoración por dorsal sin poder resolver con este acta.
+ */
+async function reconcileDorsalComments(supabase, item, acta) {
+  const scouts = Array.isArray(item.dorsal_scouts) ? item.dorsal_scouts.map((s) => ({ ...s })) : [];
+  const pending = scouts.filter((s) => s.identified_by !== 'player' && !s.reconciled && s.dorsal);
+  if (pending.length === 0) return;
+
+  console.log(`   🔍 ${pending.length} valoración(es) por dorsal a asignar con el acta...`);
+  const sides = playedBySide(acta);
+  const matchLabel = `${item.home_team_name} - ${item.away_team_name}`;
+
+  for (const ds of pending) {
+    const dorsal = parseInt(ds.dorsal, 10);
+    const side = ds.side === 'away' ? sides.away : ds.side === 'home' ? sides.home : observedSides(sides, [ds.team_name])[0];
+    const label = `#${dorsal} de ${side?.team || ds.team_name}`;
+
+    let actaPlayer = side?.allPlayers.find((p) => p.dorsal === dorsal) || null;
+    if (ds.player_name && side && (!actaPlayer || !nameMatches(actaPlayer.name, ds.player_name))) {
+      // El dorsal no está o no cuadra con el nombre que oyó el analista: manda el nombre
+      const byName = side.allPlayers.find((p) => nameMatches(p.name, ds.player_name));
+      if (byName) actaPlayer = byName;
+    }
+    if (!actaPlayer) {
+      console.log(`      ⚠️ ${label}: no figura en el acta. Se deja sin asignar.`);
+      Object.assign(ds, { reconciled: true, reconciled_at: new Date().toISOString(), status_resolution: 'not_in_acta' });
+      continue;
+    }
+
+    const realCod = String(actaPlayer.id);
+    console.log(`      📄 ${label} → ${actaPlayer.name} (${realCod})`);
+    const noteLine = ds.comment ? `[${matchLabel}] ${ds.comment}` : '';
+
+    const { data: teamRow } = await supabase.from('teams').select('id').ilike('name', String(side.team || '').trim()).maybeSingle();
+    const teamId = teamRow?.id || null;
+
+    let { data: dbPlayer } = await supabase.from('players').select('*').eq('source_player_id', realCod).maybeSingle();
+    let resolution = 'coincides';
+
+    if (dbPlayer) {
+      const updates = {
+        notes: appendNote(dbPlayer.notes, noteLine),
+        rating: ds.rating || dbPlayer.rating || null,
+        status: mergedStatus(dbPlayer.status, ds.status),
+        ...(ds.voice_note ? { sports_data: { ...(dbPlayer.sports_data || {}), voice_note: ds.voice_note } } : {})
+      };
+      if (ds.player_id && ds.player_id !== dbPlayer.id) resolution = 'reassigned_by_name';
+      if (!dryRun) {
+        const { error } = await supabase.from('players').update(updates).eq('id', dbPlayer.id);
+        if (error) {
+          console.warn(`         ⚠️ Error guardando en ${actaPlayer.name}: ${error.message}`);
+          continue;
+        }
+      }
+      console.log(`         ✅ Valoración guardada en la ficha de ${dbPlayer.first_name} ${dbPlayer.last_name}.`);
+    } else {
+      resolution = 'created_from_acta';
+      const { playerApi, historyApi } = await fetchPlayerDetail(realCod);
+      const parsedName = parsePlayerName(playerApi?.nombre_jugador || actaPlayer.name);
+      const history = buildHistory(historyApi);
+      const age = playerApi?.edad ? parseInt(playerApi.edad, 10) : NaN;
+      const birthYear = parseBirthYear(playerApi, historyApi);
+      const newPlayer = {
+        first_name: parsedName.firstName,
+        last_name: parsedName.lastName,
+        position: normalizePosition(playerApi?.posicion_jugador || actaPlayer.position),
+        jersey_number: dorsal,
+        photo_url: toPhotoUrl(playerApi?.foto, realCod),
+        team_id: teamId,
+        city: 'Castelló',
+        province: 'Castelló',
+        status: mergedStatus(null, ds.status || 'Interesante'),
+        rating: ds.rating || 3,
+        notes: noteLine,
+        sports_data: { ...buildStats(playerApi), ...(ds.voice_note ? { voice_note: ds.voice_note } : {}) },
+        source: 'ffcv_scraping',
+        source_player_id: realCod,
+        source_url: `https://ffcv.es/competiciones/jugadores/jugador.php?codigo=${realCod}`,
+        infantil_year: calculateInfantilYear(history, isNaN(age) ? null : age, birthYear),
+        age: isNaN(age) ? null : age,
+        history,
+        scraped_at: new Date().toISOString()
+      };
+      if (!dryRun) {
+        const { data: created, error } = await supabase
+          .from('players')
+          .upsert([newPlayer], { onConflict: 'source,source_player_id' })
+          .select('id')
+          .single();
+        if (error) {
+          console.warn(`         ⚠️ Error creando la ficha de ${actaPlayer.name}: ${error.message}`);
+          continue;
+        }
+        dbPlayer = { id: created.id };
+      }
+      console.log(`         🆕 No estaba en la BD: ficha de ${parsedName.fullName} creada con la valoración.`);
+    }
+
+    // Valoraciones antiguas: retirar el comentario del jugador al que se aplicó por error
+    if (!dryRun && ds.player_id && ds.player_id !== dbPlayer?.id && UUID_RE.test(ds.player_id)) {
+      const { data: wrong } = await supabase.from('players').select('id, first_name, notes').eq('id', ds.player_id).maybeSingle();
+      if (wrong && String(wrong.first_name || '').startsWith('Dorsal #')) {
+        await supabase.from('players').delete().eq('id', wrong.id);
+        console.log('         🧹 Ficha provisional borrada.');
+      } else if (wrong && ds.comment && wrong.notes?.includes(ds.comment)) {
+        await supabase.from('players').update({ notes: wrong.notes.replace(ds.comment, '').trim() }).eq('id', wrong.id);
+        console.log('         🧹 Comentario retirado del jugador que tenía ese dorsal en la plantilla.');
+      }
+    }
+
+    Object.assign(ds, {
+      reconciled: true,
+      reconciled_at: new Date().toISOString(),
+      reconciled_player_id: dbPlayer?.id || null,
+      reconciled_player_name: actaPlayer.name,
+      status_resolution: resolution
+    });
+  }
+
+  if (!dryRun) {
+    const { error } = await supabase.from('scouting_agenda').update({ dorsal_scouts: scouts }).eq('id', item.id);
+    if (error) throw new Error(`guardando dorsal_scouts: ${error.message}`);
+  }
+}
+
+async function fetchActa(codacta) {
+  const endpoint = `partidos/ficha_partido_ajax.php?cod_partido=${encodeURIComponent(codacta)}`;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await ffcvApiGet(endpoint);
+      if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
+      return res.data;
+    } catch (err) {
+      if (attempt === 3) throw err;
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
+    }
+  }
+  return null;
+}
+
+async function fetchPlayerDetail(codJugador) {
+  const cod = encodeURIComponent(codJugador);
+  const temp = encodeURIComponent(TARGET_TEMPORADA);
+  const [playerRes, historyRes] = await Promise.all([
+    ffcvApiGet(`jugadores/jugador_api.php?codigo=${cod}&cod_temporada=${temp}`).catch(() => ({ data: null })),
+    ffcvApiGet(`jugadores/historial_deportivo.php?cod_licencia=${cod}&cod_temporada=${temp}`).catch(() => ({ data: null }))
+  ]);
+  return {
+    playerApi: playerRes?.data,
+    historyApi: historyRes?.data
+  };
+}
+
+/** Extrae jugadores convocados y jugadores que jugaron (titulares + suplentes que entraron) con sus dorsales. */
+function playedBySide(acta) {
+  const side = (players, subs) => {
+    const entered = new Set((subs || []).map((s) => String(s.codjugador_entra)));
+    const list = players || [];
+    const parseNum = (d) => {
+      const n = parseInt(String(d || '').trim(), 10);
+      return !isNaN(n) && n > 0 && n <= 99 ? n : null;
+    };
+    return {
+      called: list.length,
+      allPlayers: list.map((p) => ({
+        id: String(p.codjugador),
+        name: p.nombre_jugador || p.nombre_visible,
+        dorsal: parseNum(p.dorsal),
+        starter: String(p.titular) === '1',
+        played: String(p.titular) === '1' || entered.has(String(p.codjugador)),
+        position: p.posicion || p.posicion_campo || null
+      })),
+      played: list
+        .filter((p) => String(p.titular) === '1' || entered.has(String(p.codjugador)))
+        .map((p) => ({
+          id: String(p.codjugador),
+          name: p.nombre_jugador || p.nombre_visible,
+          dorsal: parseNum(p.dorsal),
+          starter: String(p.titular) === '1'
+        }))
+    };
+  };
+  return {
+    home: { team: acta.equipo_local, ...side(acta.jugadores_equipo_local, acta.sustituciones_equipo_local) },
+    away: { team: acta.equipo_visitante, ...side(acta.jugadores_equipo_visitante, acta.sustituciones_equipo_visitante) }
+  };
+}
+
+function observedSides(sides, observedTeams) {
+  const wanted = (observedTeams || []).map(normalizeName).filter(Boolean);
+  if (wanted.length === 0) return [sides.home, sides.away];
+  return [sides.home, sides.away].filter((s) => wanted.includes(normalizeName(s.team)));
+}
+
+function parseActaDate(fecha) {
+  const m = String(fecha || '').match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  return m ? new Date(Date.UTC(+m[3], +m[2] - 1, +m[1])) : null;
+}
+
+async function resolveMatch(supabase, item) {
+  const fromLocalId = String(item.match_id || '').match(/ffcv-acta-(\d+)/);
+  if (fromLocalId) return { codacta: fromLocalId[1], date: item.scheduled_date };
+  if (UUID_RE.test(item.match_id)) {
+    const { data } = await supabase
+      .from('matches')
+      .select('codacta, source_match_id, match_date')
+      .eq('id', item.match_id)
+      .maybeSingle();
+    if (data) return { codacta: data.codacta || data.source_match_id, date: data.match_date || item.scheduled_date };
+  }
+  return { codacta: null, date: item.scheduled_date };
+}
+
+/** Pasa a 'Observado' a los que están como 'Candidato'. */
+async function promotePlayers(supabase, playedIds) {
+  if (playedIds.length === 0) return { inDb: [], promoted: [] };
+  const { data, error } = await supabase
+    .from('players')
+    .select('id, source_player_id, first_name, last_name, status')
+    .eq('source', 'ffcv_scraping')
+    .in('source_player_id', playedIds);
+  if (error) throw new Error(`players: ${error.message}`);
+
+  const inDb = data || [];
+  const toPromote = inDb.filter((p) => !p.status || p.status === 'Candidato');
+  if (!dryRun && toPromote.length > 0) {
+    const { error: upErr } = await supabase
+      .from('players')
+      .update({ status: 'Observado' })
+      .in('id', toPromote.map((p) => p.id))
+      .or('status.is.null,status.eq.Candidato');
+    if (upErr) throw new Error(`actualizando jugadores: ${upErr.message}`);
+  }
+  return { inDb, promoted: toPromote };
+}
+
 /**
  * Reconciliación de comentarios por dorsal de la agenda con el acta oficial del partido:
  * 1. Comprueba quién era realmente el dorsal en el acta oficial.
@@ -653,16 +927,17 @@ async function main() {
     return;
   }
 
-  let query = supabase.from('scouting_agenda').select('*').eq('status', 'Observat');
-  if (!processAll) {
-    query = query.is('lineup_processed_at', null);
-  }
-
-  const { data: pending, error } = await query;
+  // Partidos observados sin procesar y cualquier partido con valoraciones por dorsal sin asignar
+  // (el analista puede valorar sin marcarlo como 'Observat', o añadir valoraciones después)
+  const { data: agendaRows, error } = await supabase.from('scouting_agenda').select('*');
   if (error) {
     console.error('❌ Error leyendo la agenda:', error.message);
     process.exit(1);
   }
+  const hasPendingScouts = (a) =>
+    (a.dorsal_scouts || []).some((s) => s.identified_by !== 'player' && !s.reconciled && s.dorsal);
+  const needsLineup = (a) => a.status === 'Observat' && (processAll || !a.lineup_processed_at);
+  const pending = (agendaRows || []).filter((a) => needsLineup(a) || hasPendingScouts(a));
 
   console.log(`📋 ${pending.length} partidos observados ${processAll ? 'en total' : 'pendientes de procesar'}.`);
   const today = new Date();
@@ -695,13 +970,13 @@ async function main() {
         continue;
       }
 
-      let playedIds = [];
+      let playedIds = item.played_player_ids || [];
       if (String(acta.suspendido) === '1') {
         console.log('   🚫 Partido suspendido: no se marca a nadie.');
       } else if (String(acta.acta_cerrada) !== '1' && !processAll) {
         console.log('   ⏳ El acta aún no está cerrada. Se reintentará.');
         continue;
-      } else {
+      } else if (needsLineup(item)) {
         const sides = observedSides(playedBySide(acta), item.observed_teams);
         for (const s of sides) {
           console.log(`   ⚽ ${s.team}: ${s.called} convocados, ${s.played.length} jugaron`);
@@ -712,11 +987,12 @@ async function main() {
         console.log(`   👥 ${result.inDb.length} de ${playedIds.length} jugadores en la BD (${result.promoted.length} pasados a Observado).`);
         totalPromoted += result.promoted.length;
 
-        // Reconciliación de comentarios por dorsal con el acta
-        await reconcileDorsalComments(supabase, item, acta);
       }
 
-      if (!dryRun) {
+      // Valoraciones por dorsal -> jugador que llevaba ese dorsal según el acta
+      if (String(acta.suspendido) !== '1') await reconcileDorsalComments(supabase, item, acta);
+
+      if (!dryRun && needsLineup(item)) {
         const { error: agErr } = await supabase
           .from('scouting_agenda')
           .update({ lineup_processed_at: new Date().toISOString(), played_player_ids: playedIds })

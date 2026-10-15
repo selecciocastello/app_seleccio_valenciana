@@ -106,10 +106,14 @@ export const PLAYER_POSITIONS = [
   'Lateral Derecho',
   'Lateral Izquierdo',
   'Defensa Central',
+  'Defensa Central Izquierdo',
+  'Defensa Central Derecho',
   'Carrilero Derecho',
   'Carrilero Izquierdo',
   'Pivote Defensivo',
   'Mediocentro',
+  'Mediocentro Izquierdo',
+  'Mediocentro Derecho',
   'Mediapunta',
   'Extremo Derecho',
   'Extremo Izquierdo',
@@ -341,8 +345,12 @@ export interface DorsalScoutItem {
   id?: string;
   team_name: string;
   side: 'home' | 'away';
-  dorsal: number;
+  // 'dorsal': l'analista no sap qui és; s'assigna al jugador que porta el dorsal a l'acta.
+  // 'player': l'analista ha triat el jugador; ja està aplicat i no es reconcilia.
+  identified_by?: 'dorsal' | 'player';
+  dorsal?: number;
   player_id?: string;
+  player_name?: string; // Nom triat o, per dorsal, el que l'analista ha sentit (opcional)
   rating?: number;
   status?: PlayerStatus;
   comment?: string;
@@ -357,7 +365,7 @@ export interface DorsalScoutItem {
   reconciled_at?: string;
   reconciled_player_id?: string;
   reconciled_player_name?: string;
-  status_resolution?: 'coincides' | 'created_from_acta' | 'reassigned_by_name';
+  status_resolution?: 'coincides' | 'created_from_acta' | 'reassigned_by_name' | 'not_in_acta';
 }
 
 export interface ScoutingAgendaItem {

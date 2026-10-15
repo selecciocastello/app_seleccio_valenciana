@@ -222,6 +222,11 @@ function loadStoredCallups(): Callup[] {
 let memoryPlayers: Player[] = [];
 let memoryTeams: Team[] = [];
 let memoryMatches: Match[] = [];
+/** Identificador d'una valoració del partit (les antigues no tenen id). */
+export function dorsalScoutKey(s: import('../types/models').DorsalScoutItem): string {
+  return s.id || `${s.side}-${s.dorsal ?? ''}-${s.player_id ?? ''}`;
+}
+
 let memoryCallups: Callup[] = loadStoredCallups();
 let memoryTrainings: TrainingSession[] = INITIAL_TRAININGS;
 let memoryReports: PlayerReport[] = INITIAL_REPORTS;
@@ -779,17 +784,20 @@ export function useAppStore() {
         memoryAgenda.map((item) => {
           if (item.id !== agendaId) return item;
           const prevScouts = item.dorsal_scouts || [];
-          const existingIdx = prevScouts.findIndex(
-            (s) =>
-              s.dorsal === scout.dorsal &&
-              s.team_name.trim().toLowerCase() === scout.team_name.trim().toLowerCase()
+          // Un jugador triat es valora un cop per partit; per dorsal, un cop per dorsal i equip
+          const existingIdx = prevScouts.findIndex((s) =>
+            scout.identified_by === 'player'
+              ? s.identified_by === 'player' && s.player_id === scout.player_id
+              : s.identified_by !== 'player' &&
+                s.dorsal === scout.dorsal &&
+                s.team_name.trim().toLowerCase() === scout.team_name.trim().toLowerCase()
           );
           let newScouts: import('../types/models').DorsalScoutItem[];
           if (existingIdx !== -1) {
             newScouts = [...prevScouts];
             newScouts[existingIdx] = { ...newScouts[existingIdx], ...scout };
           } else {
-            newScouts = [...prevScouts, scout];
+            newScouts = [...prevScouts, { id: crypto.randomUUID(), ...scout }];
           }
 
           const updated: ScoutingAgendaItem = {
@@ -804,6 +812,18 @@ export function useAppStore() {
     },
     []
   );
+
+  const removeDorsalScoutFromAgenda = useCallback((agendaId: string, scoutKey: string) => {
+    const item = memoryAgenda.find((a) => a.id === agendaId);
+    if (!item) return;
+    const updated: ScoutingAgendaItem = {
+      ...item,
+      dorsal_scouts: (item.dorsal_scouts || []).filter((s) => dorsalScoutKey(s) !== scoutKey),
+      updated_at: new Date().toISOString()
+    };
+    setMemoryAgenda(memoryAgenda.map((a) => (a.id === agendaId ? updated : a)));
+    saveAgendaItemToDb(updated);
+  }, []);
 
   // Veces que un equipo ha sido observado
   const getTeamObservationCount = useCallback((teamName: string): number => {
@@ -941,6 +961,7 @@ export function useAppStore() {
     removeFromAgenda,
     markMatchAsObserved,
     addDorsalScoutToAgenda,
+    removeDorsalScoutFromAgenda,
     getTeamObservationCount,
     getTeamObservations,
     getTeamPlayersBreakdown,

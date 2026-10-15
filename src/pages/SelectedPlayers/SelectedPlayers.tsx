@@ -16,7 +16,8 @@ import {
   CheckCircle2,
   ChevronRight,
   ShieldAlert,
-  List
+  List,
+  Goal
 } from 'lucide-react';
 import clsx from 'clsx';
 import { Card } from '../../components/ui/Card';
@@ -29,9 +30,10 @@ import { useToast } from '../../contexts/ToastContext';
 import type { Player } from '../../types/models';
 import { PlayerPhoto } from '../../components/ui/PlayerPhoto';
 import { formatAppDate } from '../../utils/dateFormatter';
+import { PositionBoard } from '../../components/ui/PositionBoard';
 
-type ViewMode = 'list_position' | 'cards_position' | 'team' | 'grid';
-type StatusFilter = 'all' | 'Preseleccionado' | 'Seleccionado' | 'all_pool';
+type ViewMode = 'pitch' | 'list_position' | 'cards_position' | 'team' | 'grid';
+type StatusFilter = 'all' | 'Interesante' | 'Preseleccionado' | 'Seleccionado' | 'all_pool';
 
 interface PositionGroup {
   id: string;
@@ -55,10 +57,10 @@ export const SelectedPlayers: React.FC = () => {
   const { players, callups, updatePlayer, addPlayersToCallup, createCallup } = useAppStore();
   const { showToast } = useToast();
 
-  // Filtros y modo de visualización (Por defecto 'list_position' = formato lista organizado por posiciones)
+  // Filtros y modo de visualización (por defecto el campograma por posiciones)
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [viewMode, setViewMode] = useState<ViewMode>('list_position');
+  const [viewMode, setViewMode] = useState<ViewMode>('pitch');
   const [ratingFilter, setRatingFilter] = useState<'all' | 'min_4' | 'min_3' | 'unrated'>('all');
 
   // Selección múltiple para convocatorias
@@ -79,7 +81,10 @@ export const SelectedPlayers: React.FC = () => {
   const basePool = useMemo(() => {
     return players.filter((p) => {
       if (statusFilter === 'all') {
-        return p.status === 'Seleccionado' || p.status === 'Preseleccionado';
+        return p.status === 'Seleccionado' || p.status === 'Preseleccionado' || p.status === 'Interesante';
+      }
+      if (statusFilter === 'Interesante') {
+        return p.status === 'Interesante';
       }
       if (statusFilter === 'Preseleccionado') {
         return p.status === 'Preseleccionado';
@@ -123,6 +128,20 @@ export const SelectedPlayers: React.FC = () => {
   // Estadísticas rápidas
   const totalPre = useMemo(() => players.filter((p) => p.status === 'Preseleccionado').length, [players]);
   const totalSel = useMemo(() => players.filter((p) => p.status === 'Seleccionado').length, [players]);
+  const totalInt = useMemo(() => players.filter((p) => p.status === 'Interesante').length, [players]);
+
+  // Sectors del campograma: un camp per estat
+  const pitchSections = useMemo(
+    () =>
+      [
+        { status: 'Interesante', title: 'Interessants', accent: 'violet' as const, dot: 'bg-violet-600' },
+        { status: 'Preseleccionado', title: 'Preseleccionats', accent: 'amber' as const, dot: 'bg-amber-500' },
+        { status: 'Seleccionado', title: 'Seleccionats', accent: 'emerald' as const, dot: 'bg-emerald-600' }
+      ]
+        .map((s) => ({ ...s, players: filteredPlayers.filter((p) => p.status === s.status) }))
+        .filter((s) => s.players.length > 0),
+    [filteredPlayers]
+  );
   const ratedCount = useMemo(
     () => basePool.filter((p) => (p.rating || 0) > 0).length,
     [basePool]
@@ -363,7 +382,7 @@ export const SelectedPlayers: React.FC = () => {
             <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#ff6600] to-amber-500 text-white flex items-center justify-center shadow-md">
               <Trophy className="w-5 h-5" />
             </div>
-            <span>JUGADORS SELECCIONATS I PRESELECCIONATS</span>
+            <span>JUGADORS SELECCIONATS, PRESELECCIONATS I INTERESSANTS</span>
           </h1>
           <p className="text-xs font-semibold text-slate-600 mt-1">
             Plantilla oficial organitzada per posicions, llistat d'accés ràpid, valoració de 1 a 5 estrelles i gestió de convocatòries
@@ -453,7 +472,19 @@ export const SelectedPlayers: React.FC = () => {
                   : 'text-slate-600 hover:text-slate-900'
               )}
             >
-              Tots ({totalPre + totalSel})
+              Tots ({totalInt + totalPre + totalSel})
+            </button>
+            <button
+              onClick={() => setStatusFilter('Interesante')}
+              className={clsx(
+                'px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer',
+                statusFilter === 'Interesante'
+                  ? 'bg-violet-600 text-white shadow-xs'
+                  : 'text-violet-800 hover:bg-violet-100'
+              )}
+            >
+              <span>✨ Interessants</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-white/20 text-[10px]">{totalInt}</span>
             </button>
             <button
               onClick={() => setStatusFilter('Preseleccionado')}
@@ -499,7 +530,22 @@ export const SelectedPlayers: React.FC = () => {
               Vista:
             </span>
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
-              {/* 1. LLISTA PER POSICIÓ (EL PRIMER PER DEFECTE) */}
+              {/* 0. CAMPOGRAMA PER POSICIÓ (PER DEFECTE) */}
+              <button
+                onClick={() => setViewMode('pitch')}
+                className={clsx(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all whitespace-nowrap cursor-pointer',
+                  viewMode === 'pitch'
+                    ? 'bg-[#061338] text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                )}
+                title="Campograma per posicions: un camp per a Interessants, Preseleccionats i Seleccionats"
+              >
+                <Goal className={clsx('w-3.5 h-3.5', viewMode === 'pitch' ? 'text-emerald-300' : 'text-slate-500')} />
+                <span>Campograma</span>
+              </button>
+
+              {/* 1. LLISTA PER POSICIÓ */}
               <button
                 onClick={() => setViewMode('list_position')}
                 className={clsx(
@@ -619,7 +665,7 @@ export const SelectedPlayers: React.FC = () => {
             No s'han trobat jugadors amb els filtres actuals
           </h3>
           <p className="text-xs text-slate-500 max-w-md mx-auto">
-            Canvia els criteris de cerca o canvia l'estat dels jugadors a <strong>Preseleccionat</strong> o <strong>Seleccionat</strong> des de la seua fitxa.
+            Canvia els criteris de cerca o marca jugadors com a <strong>Interessant</strong>, <strong>Preseleccionat</strong> o <strong>Seleccionat</strong> des de la seua fitxa o des de l'agenda.
           </p>
         </Card>
       ) : (
@@ -627,6 +673,28 @@ export const SelectedPlayers: React.FC = () => {
           {/* ========================================================= */}
           {/* MODE 1: LLISTA PER POSICIÓ (EL FORMAT SOL·LICITAT PER DEFECTE) */}
           {/* ========================================================= */}
+          {viewMode === 'pitch' && (
+            <div className="space-y-6">
+              {pitchSections.map((section) => (
+                <section key={section.status} className="space-y-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className={clsx('w-2.5 h-2.5 rounded-full', section.dot)} />
+                    <h2 className="text-sm sm:text-base font-black text-[#061338] uppercase tracking-wide">
+                      {section.title}
+                    </h2>
+                    <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full">
+                      {section.players.length} {section.players.length === 1 ? 'jugador' : 'jugadors'}
+                    </span>
+                    <span className="text-[11px] text-slate-400 hidden sm:inline">
+                      Passa per damunt d'un jugador per a llegir el comentari
+                    </span>
+                  </div>
+                  <PositionBoard players={section.players} accent={section.accent} />
+                </section>
+              ))}
+            </div>
+          )}
+
           {viewMode === 'list_position' && (
             <div className="space-y-6">
               {positionGroups.map((group) => {

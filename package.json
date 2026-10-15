@@ -9,7 +9,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "scrape:infantil": "node scripts/scrape_ffcv_infantil.cjs",
-    "scrape:infantil:matches": "node scripts/scrape_ffcv_infantil.cjs --matches-only"
+    "scrape:infantil:matches": "node scripts/scrape_ffcv_infantil.cjs --matches-only",
+    "scrape:infantil:players": "node scripts/scrape_ffcv_infantil.cjs --players-only --rotation --teams-per-run 25"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

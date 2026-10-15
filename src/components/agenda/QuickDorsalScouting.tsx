@@ -6,19 +6,25 @@ import {
   Star,
   CheckCircle2,
   UserPlus,
+  UserCheck,
   Shield,
   RotateCcw,
   Volume2,
-  Check
+  Check,
+  Search,
+  Hash,
+  Clock,
+  AlertTriangle,
+  Trash2
 } from 'lucide-react';
-import { useAppStore } from '../../hooks/useAppStore';
+import { useAppStore, dorsalScoutKey } from '../../hooks/useAppStore';
 import { useToast } from '../../contexts/ToastContext';
 import { useVoiceRecorder } from '../../hooks/useVoiceRecorder';
 import { StarRating } from '../ui/StarRating';
 import { JerseyBadge } from '../ui/JerseyBadge';
 import { AudioNotePlayer } from '../ui/AudioNotePlayer';
 import { saveVoiceNote, getVoiceNotesForPlayer } from '../../utils/audioStorage';
-import type { Player, PlayerStatus, ScoutingAgendaItem } from '../../types/models';
+import type { DorsalScoutItem, Player, PlayerStatus, ScoutingAgendaItem } from '../../types/models';
 
 interface QuickDorsalScoutingProps {
   agendaItem: ScoutingAgendaItem;
@@ -27,28 +33,39 @@ interface QuickDorsalScoutingProps {
   onPlayerSaved?: (player: Player) => void;
 }
 
+// 'dorsal': l'analista no coneix el jugador i el valora pel dorsal; després del partit
+// scripts/process_observed_matches.cjs mira l'acta de la FFCV i ho passa al jugador que el portava.
+// 'player': l'analista coneix el jugador i el tria de la plantilla; es guarda directament a la seua fitxa.
+type ScoutMode = 'dorsal' | 'player';
+
+const normalize = (s: string) =>
+  s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
 export const QuickDorsalScouting: React.FC<QuickDorsalScoutingProps> = ({
   agendaItem,
   homePlayers,
   awayPlayers,
   onPlayerSaved
 }) => {
-  const { updatePlayer, addPlayer, teams, addDorsalScoutToAgenda } = useAppStore();
+  const { updatePlayer, agenda, addDorsalScoutToAgenda, removeDorsalScoutFromAgenda } = useAppStore();
   const { showToast } = useToast();
 
   // 1. Equip seleccionat: Local ('home') o Visitant ('away')
   const [selectedTeamSide, setSelectedTeamSide] = useState<'home' | 'away'>('home');
 
-  // 2. Dorsal introduït o seleccionat
+  // 2. Com s'identifica el jugador: pel dorsal (no el conec) o triant-lo (el conec)
+  const [mode, setMode] = useState<ScoutMode>('dorsal');
   const [dorsalInput, setDorsalInput] = useState<string>('');
+  const [heardName, setHeardName] = useState<string>('');
+  const [playerSearch, setPlayerSearch] = useState<string>('');
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
 
-  // 3. Camps del formulari de valoració
-  const [status, setStatus] = useState<PlayerStatus>('Interesante');
+  // 3. Camps del formulari de valoració (status null = no canviar l'estat del jugador)
+  const [status, setStatus] = useState<PlayerStatus | null>('Interesante');
   const [rating, setRating] = useState<number>(3); // Per defecte 3 estrelles (Interessant)
   const [comment, setComment] = useState<string>('');
-  const [newPlayerName, setNewPlayerName] = useState<string>('');
 
-  // 4. Nota de veu prèvia existent (si ja en tenia una guardada)
+  // 4. Nota de veu prèvia existent del jugador triat
   const [existingAudioUrl, setExistingAudioUrl] = useState<string | null>(null);
 
   // Hook de gravació de veu
@@ -66,96 +83,103 @@ export const QuickDorsalScouting: React.FC<QuickDorsalScoutingProps> = ({
 
   // Actualitza el camp de comentari automàticament a mesura que es transcriu la veu
   useEffect(() => {
-    if (transcript) {
-      setComment((prev) => {
-        // Si el comentari no té la transcripció, afegeix-la
-        if (!prev) return transcript;
-        return transcript;
-      });
-    }
+    if (transcript) setComment(transcript);
   }, [transcript]);
 
-  // Equip actual seleccionat
+  // L'item de la prop és una còpia: les valoracions noves es llegeixen de l'agenda del store
+  const liveItem = agenda.find((a) => a.id === agendaItem.id) || agendaItem;
+  const matchScouts = liveItem.dorsal_scouts || [];
+
   const activeTeamName =
     selectedTeamSide === 'home' ? agendaItem.home_team_name : agendaItem.away_team_name;
-
   const activeTeamPlayers = selectedTeamSide === 'home' ? homePlayers : awayPlayers;
 
-  // Cerca de l'objecte Team complet
-  const activeTeamObj = useMemo(() => {
-    return teams.find(
-      (t) =>
-        t.name.trim().toLowerCase() === activeTeamName.trim().toLowerCase() ||
-        (selectedTeamSide === 'home' && t.id === agendaItem.match?.home_team_id) ||
-        (selectedTeamSide === 'away' && t.id === agendaItem.match?.away_team_id)
-    );
-  }, [teams, activeTeamName, selectedTeamSide, agendaItem]);
-
-  // Cerca si ja hi ha un jugador amb este dorsal a la plantilla de l'equip
-  const matchedPlayer = useMemo(() => {
+  // Per dorsal: qui el porta segons la plantilla (només orientatiu, el dia del partit pot ser un altre)
+  const rosterPlayerWithDorsal = useMemo(() => {
     const num = parseInt(dorsalInput.trim(), 10);
     if (isNaN(num)) return null;
     return activeTeamPlayers.find((p) => p.jersey_number === num) || null;
   }, [dorsalInput, activeTeamPlayers]);
 
-  // Quan canvia el jugador trobat o el dorsal, precarreguem les dades si existeix
-  useEffect(() => {
-    if (matchedPlayer) {
-      setStatus(
-        matchedPlayer.status === 'Preseleccionado' || matchedPlayer.status === 'Interesante'
-          ? matchedPlayer.status
-          : 'Interesante'
+  const selectedPlayer = useMemo(
+    () => (selectedPlayerId ? activeTeamPlayers.find((p) => p.id === selectedPlayerId) || null : null),
+    [selectedPlayerId, activeTeamPlayers]
+  );
+
+  // Plantilla filtrada per nom o dorsal per a triar el jugador
+  const searchResults = useMemo(() => {
+    const q = normalize(playerSearch);
+    return activeTeamPlayers
+      .filter(
+        (p) =>
+          !q ||
+          normalize(p.full_name || `${p.first_name} ${p.last_name}`).includes(q) ||
+          String(p.jersey_number ?? '') === q
+      )
+      .sort(
+        (a, b) =>
+          (a.jersey_number ?? 999) - (b.jersey_number ?? 999) ||
+          (a.full_name || '').localeCompare(b.full_name || '')
       );
-      setRating(matchedPlayer.rating || 3);
-      setComment(matchedPlayer.notes || '');
+  }, [playerSearch, activeTeamPlayers]);
 
-      // Comprova si té nota de veu a sports_data
-      const sportsVoice = (matchedPlayer.sports_data as any)?.voice_note;
-      if (sportsVoice?.audioBase64) {
-        setExistingAudioUrl(sportsVoice.audioBase64);
-      } else {
-        // Cerca a IndexedDB
-        getVoiceNotesForPlayer(matchedPlayer.id).then((notes) => {
-          if (notes.length > 0 && notes[notes.length - 1].audioBase64) {
-            setExistingAudioUrl(notes[notes.length - 1].audioBase64);
-          } else {
-            setExistingAudioUrl(null);
-          }
-        });
-      }
-    } else {
+  // En triar un jugador es precarrega el seu estat, estrelles i nota de veu
+  useEffect(() => {
+    if (!selectedPlayer) {
       setExistingAudioUrl(null);
+      return;
     }
-  }, [matchedPlayer]);
+    setStatus(
+      selectedPlayer.status === 'Preseleccionado' || selectedPlayer.status === 'Interesante'
+        ? selectedPlayer.status
+        : null
+    );
+    setRating(selectedPlayer.rating || 3);
+    setComment('');
 
-  // Quan canvia d'equip, neteja o adapta el dorsal si cal
+    const sportsVoice = (selectedPlayer.sports_data as any)?.voice_note;
+    if (sportsVoice?.audioBase64) {
+      setExistingAudioUrl(sportsVoice.audioBase64);
+    } else {
+      getVoiceNotesForPlayer(selectedPlayer.id).then((notes) => {
+        const last = notes[notes.length - 1];
+        setExistingAudioUrl(last?.audioBase64 || null);
+      });
+    }
+  }, [selectedPlayer]);
+
+  const resetForm = () => {
+    setDorsalInput('');
+    setHeardName('');
+    setPlayerSearch('');
+    setSelectedPlayerId(null);
+    setComment('');
+    setRating(3);
+    setStatus('Interesante');
+    resetRecording();
+    setExistingAudioUrl(null);
+  };
+
   const handleTeamChange = (side: 'home' | 'away') => {
     setSelectedTeamSide(side);
+    setSelectedPlayerId(null);
   };
 
-  // Selecció ràpida de dorsal des dels botons de la plantilla
-  const handleSelectDorsal = (num: number) => {
-    setDorsalInput(String(num));
-    resetRecording();
+  const handleModeChange = (next: ScoutMode) => {
+    setMode(next);
+    resetForm();
   };
 
-  // Toggle de marcatge com a Interessant
-  const toggleInteressant = () => {
-    if (status === 'Interesante') {
-      setStatus('Candidato');
-    } else {
-      setStatus('Interesante');
-    }
+  // Des del mode dorsal: "és ell" passa a triar el jugador de la plantilla
+  const pickRosterPlayer = (player: Player) => {
+    setMode('player');
+    setDorsalInput('');
+    setHeardName('');
+    setPlayerSearch('');
+    setSelectedPlayerId(player.id);
   };
 
-  // Toggle de marcatge com a Preseleccionat
-  const togglePreseleccionat = () => {
-    if (status === 'Preseleccionado') {
-      setStatus('Candidato');
-    } else {
-      setStatus('Preseleccionado');
-    }
-  };
+  const toggleStatus = (value: PlayerStatus) => setStatus((prev) => (prev === value ? null : value));
 
   // Acció de gravació (iniciar / aturar)
   const handleToggleRecord = async () => {
@@ -170,167 +194,133 @@ export const QuickDorsalScouting: React.FC<QuickDorsalScoutingProps> = ({
     }
   };
 
-  // Netejar la nota de veu actual
   const handleClearAudio = () => {
     resetRecording();
     setExistingAudioUrl(null);
   };
 
-  // Guardar valoració del jugador
-  const handleSaveObservation = async () => {
-    const num = parseInt(dorsalInput.trim(), 10);
-    if (isNaN(num)) {
-      showToast('Si us plau, indica un número de dorsal vàlid', 'error');
-      return;
-    }
+  const matchLabel = `${agendaItem.home_team_name} - ${agendaItem.away_team_name}`;
 
-    let targetPlayer: Player | null = matchedPlayer;
-    const finalAudioBase64 = audioBase64 || existingAudioUrl;
-
+  const handleSave = async () => {
+    const now = new Date().toISOString();
+    const finalAudioBase64 = audioBase64 || (mode === 'player' ? existingAudioUrl : null);
     const voiceNoteData = finalAudioBase64
       ? {
           audioBase64: finalAudioBase64,
           transcript: comment || transcript,
           duration: recordingTime,
           matchId: agendaItem.match_id,
-          date: new Date().toISOString()
+          date: now
         }
       : undefined;
 
-    const matchScoutData = {
-      match_id: agendaItem.match_id,
-      agenda_id: agendaItem.id,
-      team_name: activeTeamName,
-      side: selectedTeamSide,
-      dorsal: num,
-      rating,
-      status,
-      notes: comment.trim(),
-      created_at: new Date().toISOString()
-    };
-
-    if (targetPlayer) {
-      // Actualitzar jugador existent
-      const updatedSportsData = {
-        ...(targetPlayer.sports_data || {}),
-        ...(voiceNoteData ? { voice_note: voiceNoteData } : {}),
-        match_scout: matchScoutData
-      };
-
-      updatePlayer(targetPlayer.id, {
-        status,
-        rating,
-        notes: comment.trim(),
-        sports_data: updatedSportsData
-      });
-
-      // Registrar seguiment de dorsal a l'agenda
+    if (mode === 'dorsal') {
+      const num = parseInt(dorsalInput.trim(), 10);
+      if (isNaN(num) || num < 1 || num > 99) {
+        showToast('Si us plau, indica un número de dorsal vàlid', 'error');
+        return;
+      }
+      // No es toca cap fitxa: el dorsal de la plantilla pot no ser el del partit.
+      // Quan es publique l'acta, el script ho passa al jugador que el portava.
       addDorsalScoutToAgenda(agendaItem.id, {
+        identified_by: 'dorsal',
         team_name: activeTeamName,
         side: selectedTeamSide,
         dorsal: num,
-        player_id: targetPlayer.id,
+        player_name: heardName.trim() || undefined,
         rating,
-        status,
+        status: status || undefined,
         comment: comment.trim(),
         voice_note: voiceNoteData,
-        created_at: new Date().toISOString()
+        created_at: now
       });
-
-      // Desa a IndexedDB
-      if (finalAudioBase64) {
-        await saveVoiceNote({
-          id: `vn_${targetPlayer.id}_${Date.now()}`,
-          playerId: targetPlayer.id,
-          matchId: agendaItem.match_id,
-          jerseyNumber: num,
-          teamName: activeTeamName,
-          audioBase64: finalAudioBase64,
-          transcript: comment,
-          createdAt: new Date().toISOString()
-        });
-      }
-
-      showToast(
-        `Jugador ${targetPlayer.full_name} (#${num}) valorat: ${rating}⭐ (${status})`,
-        'success'
-      );
-      if (onPlayerSaved) onPlayerSaved(targetPlayer);
-    } else {
-      // Crear nou jugador amb este dorsal per a l'equip
-      const playerName = newPlayerName.trim() || `Dorsal #${num} (${activeTeamName})`;
-      const created = await addPlayer({
-        full_name: playerName,
-        first_name: playerName,
-        last_name: '',
-        jersey_number: num,
-        team_id: activeTeamObj?.id,
-        team: activeTeamObj || {
-          id: `team_${activeTeamName.toLowerCase().replace(/\s+/g, '_')}`,
-          name: activeTeamName,
-          club: activeTeamName,
-          city: 'Castelló'
-        },
-        status,
-        rating,
-        notes: comment.trim(),
-        sports_data: {
-          ...(voiceNoteData ? { voice_note: voiceNoteData } : {}),
-          match_scout: matchScoutData
-        }
-      });
-
-      // Registrar seguiment de dorsal a l'agenda per a la reconciliació posterior
-      addDorsalScoutToAgenda(agendaItem.id, {
-        team_name: activeTeamName,
-        side: selectedTeamSide,
-        dorsal: num,
-        player_id: created?.id,
-        rating,
-        status,
-        comment: comment.trim(),
-        voice_note: voiceNoteData,
-        created_at: new Date().toISOString()
-      });
-
-      if (finalAudioBase64 && created) {
-        await saveVoiceNote({
-          id: `vn_${created.id}_${Date.now()}`,
-          playerId: created.id,
-          matchId: agendaItem.match_id,
-          jerseyNumber: num,
-          teamName: activeTeamName,
-          audioBase64: finalAudioBase64,
-          transcript: comment,
-          createdAt: new Date().toISOString()
-        });
-      }
-
-      showToast(
-        `Nou jugador registrat: #${num} ${playerName} valorat: ${rating}⭐ (es conciliarà amb l'acta FFCV)`,
-        'success'
-      );
-      if (onPlayerSaved && created) onPlayerSaved(created);
+      showToast(`#${num} de ${activeTeamName} valorat: ${rating}⭐. S'assignarà al jugador quan es publique l'acta.`, 'success');
+      resetForm();
+      return;
     }
 
-    // Reinicia els camps per a poder valorar el següent jugador ràpidament
-    setDorsalInput('');
-    setComment('');
-    setNewPlayerName('');
-    setRating(3);
-    setStatus('Interesante');
-    resetRecording();
-    setExistingAudioUrl(null);
+    if (!selectedPlayer) {
+      showToast('Tria el jugador de la plantilla', 'error');
+      return;
+    }
+
+    const noteLine = comment.trim() ? `[${matchLabel}] ${comment.trim()}` : '';
+    const notes = [selectedPlayer.notes?.trim(), noteLine].filter(Boolean).join('\n\n');
+
+    updatePlayer(selectedPlayer.id, {
+      ...(status ? { status } : {}),
+      rating,
+      notes,
+      sports_data: {
+        ...(selectedPlayer.sports_data || {}),
+        ...(voiceNoteData ? { voice_note: voiceNoteData } : {}),
+        match_scout: {
+          match_id: agendaItem.match_id,
+          agenda_id: agendaItem.id,
+          team_name: activeTeamName,
+          side: selectedTeamSide,
+          dorsal: selectedPlayer.jersey_number,
+          rating,
+          status,
+          notes: comment.trim(),
+          created_at: now
+        }
+      }
+    });
+
+    addDorsalScoutToAgenda(agendaItem.id, {
+      identified_by: 'player',
+      team_name: activeTeamName,
+      side: selectedTeamSide,
+      dorsal: selectedPlayer.jersey_number ?? undefined,
+      player_id: selectedPlayer.id,
+      player_name: selectedPlayer.full_name,
+      rating,
+      status: status || undefined,
+      comment: comment.trim(),
+      voice_note: voiceNoteData,
+      created_at: now
+    });
+
+    if (audioBase64) {
+      await saveVoiceNote({
+        id: `vn_${selectedPlayer.id}_${Date.now()}`,
+        playerId: selectedPlayer.id,
+        matchId: agendaItem.match_id,
+        jerseyNumber: selectedPlayer.jersey_number ?? 0,
+        teamName: activeTeamName,
+        audioBase64,
+        transcript: comment,
+        createdAt: now
+      });
+    }
+
+    showToast(`${selectedPlayer.full_name} valorat: ${rating}⭐${status ? ` (${status})` : ''}`, 'success');
+    onPlayerSaved?.(selectedPlayer);
+    resetForm();
   };
 
-  // Llista de jugadors amb dorsal de l'equip actual
-  const existingRosterWithDorsal = useMemo(() => {
-    return activeTeamPlayers
-      .filter((p) => p.jersey_number !== undefined && p.jersey_number !== null)
-      .sort((a, b) => (Number(a.jersey_number) || 0) - (Number(b.jersey_number) || 0));
-  }, [activeTeamPlayers]);
+  const canSave =
+    !isRecording && (mode === 'dorsal' ? dorsalInput.trim() !== '' : selectedPlayer !== null);
 
-  const activeAudioSource = audioUrl || existingAudioUrl;
+  const activeAudioSource = audioUrl || (mode === 'player' ? existingAudioUrl : null);
+
+  const scoutState = (s: DorsalScoutItem) => {
+    if (s.identified_by === 'player') {
+      return { icon: <UserCheck className="w-3 h-3" />, text: 'Guardat a la fitxa', cls: 'text-emerald-300' };
+    }
+    if (s.status_resolution === 'not_in_acta') {
+      return { icon: <AlertTriangle className="w-3 h-3" />, text: "Dorsal no trobat a l'acta", cls: 'text-rose-300' };
+    }
+    if (s.reconciled) {
+      return {
+        icon: <CheckCircle2 className="w-3 h-3" />,
+        text: `Assignat per l'acta a ${s.reconciled_player_name || 'jugador'}`,
+        cls: 'text-emerald-300'
+      };
+    }
+    return { icon: <Clock className="w-3 h-3" />, text: "Pendent de l'acta FFCV", cls: 'text-amber-300' };
+  };
 
   return (
     <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-sky-500/30 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4">
@@ -348,20 +338,15 @@ export const QuickDorsalScouting: React.FC<QuickDorsalScoutingProps> = ({
               </span>
             </h3>
             <p className="text-[11px] text-slate-400">
-              Relaciona dorsal amb l'equip, grava nota de veu o dictat, marca interessant i valora
+              Valora pel dorsal si no el coneixes (es passa al jugador amb l'acta) o tria'l directament si el coneixes
             </p>
           </div>
         </div>
 
-        {dorsalInput && (
+        {(dorsalInput || selectedPlayerId) && (
           <button
             type="button"
-            onClick={() => {
-              setDorsalInput('');
-              resetRecording();
-              setComment('');
-              setExistingAudioUrl(null);
-            }}
+            onClick={resetForm}
             className="text-[11px] font-bold text-slate-400 hover:text-white flex items-center gap-1 self-end sm:self-auto"
           >
             <RotateCcw className="w-3 h-3" /> Netejar
@@ -431,106 +416,146 @@ export const QuickDorsalScouting: React.FC<QuickDorsalScoutingProps> = ({
         </div>
       </div>
 
-      {/* ── PAS 2: DORSAL I AUTO-DETECCIÓ DE JUGADOR ──────────────────────── */}
+      {/* ── PAS 2: IDENTIFICAR EL JUGADOR (per dorsal o triant-lo) ────────── */}
       <div>
-        <label className="text-xs font-bold text-slate-300 block mb-2 flex items-center justify-between">
-          <span>2. Número de Dorsal vist al camp:</span>
-          {matchedPlayer && (
-            <span className="text-[11px] font-black text-emerald-400 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Jugador identificat a la plantilla
-            </span>
-          )}
-        </label>
+        <label className="text-xs font-bold text-slate-300 block mb-2">2. Qui és el jugador?</label>
 
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          {/* Caixa d'entrada del número */}
-          <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 sm:w-44 focus-within:border-sky-400">
-            <span className="text-xs font-black text-slate-500 uppercase">DORSAL</span>
-            <input
-              type="number"
-              min="1"
-              max="99"
-              placeholder="Ex: 8"
-              value={dorsalInput}
-              onChange={(e) => setDorsalInput(e.target.value)}
-              className="w-full bg-transparent text-lg font-black text-white placeholder-slate-600 focus:outline-none"
-            />
-          </div>
-
-          {/* Detecció de Jugador */}
-          {matchedPlayer ? (
-            <div className="flex-1 bg-slate-950/90 border border-emerald-500/40 rounded-xl p-2.5 flex items-center gap-3 shadow-sm">
-              <JerseyBadge
-                number={matchedPlayer.jersey_number}
-                size="sm"
-                variant="kit"
-                color={selectedTeamSide === 'home' ? 'blue' : 'orange'}
-              />
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-black text-white truncate">{matchedPlayer.full_name}</p>
-                <p className="text-[11px] text-slate-400 truncate">
-                  {matchedPlayer.position || 'Demarcació sense definir'} ·{' '}
-                  <span className="text-sky-300 font-semibold">{matchedPlayer.infantil_year || 'Infantil'}</span>
-                </p>
-              </div>
-              <span
-                className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${
-                  matchedPlayer.status === 'Preseleccionado'
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                    : matchedPlayer.status === 'Interesante'
-                    ? 'bg-violet-500/20 text-violet-300 border border-violet-500/40'
-                    : 'bg-slate-800 text-slate-300'
-                }`}
-              >
-                {matchedPlayer.status}
-              </span>
-            </div>
-          ) : dorsalInput.trim() ? (
-            <div className="flex-1 bg-slate-950/90 border border-amber-500/30 rounded-xl p-2.5 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <UserPlus className="w-4 h-4 text-amber-400 shrink-0" />
-                <span className="text-[11px] text-amber-200 font-semibold">
-                  Dorsal #{dorsalInput} nou a {activeTeamName}:
-                </span>
-              </div>
-              <input
-                type="text"
-                placeholder="Nom del jugador (opcional)"
-                value={newPlayerName}
-                onChange={(e) => setNewPlayerName(e.target.value)}
-                className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
-              />
-            </div>
-          ) : null}
+        <div className="grid grid-cols-2 gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 mb-3">
+          <button
+            type="button"
+            onClick={() => handleModeChange('dorsal')}
+            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              mode === 'dorsal' ? 'bg-sky-600 text-white shadow' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Hash className="w-3.5 h-3.5" />
+            <span>No el conec · per dorsal</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleModeChange('player')}
+            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              mode === 'player' ? 'bg-sky-600 text-white shadow' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <UserCheck className="w-3.5 h-3.5" />
+            <span>El conec · triar jugador</span>
+          </button>
         </div>
 
-        {/* Drecera de dorsals de la plantilla existent */}
-        {existingRosterWithDorsal.length > 0 && (
-          <div className="mt-2.5">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
-              Dorsals disponibles a la plantilla de {activeTeamName}:
-            </span>
-            <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto custom-scrollbar p-1">
-              {existingRosterWithDorsal.map((p) => {
-                const isSelected = String(p.jersey_number) === dorsalInput;
-                return (
+        {mode === 'dorsal' ? (
+          <div className="space-y-2.5">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 sm:w-44 focus-within:border-sky-400">
+                <span className="text-xs font-black text-slate-500 uppercase">DORSAL</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min="1"
+                  max="99"
+                  placeholder="Ex: 8"
+                  value={dorsalInput}
+                  onChange={(e) => setDorsalInput(e.target.value)}
+                  className="w-full bg-transparent text-lg font-black text-white placeholder-slate-600 focus:outline-none"
+                />
+              </div>
+              <div className="flex-1 flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 focus-within:border-sky-400">
+                <UserPlus className="w-4 h-4 text-slate-500 shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Nom, si l'has sentit (opcional)"
+                  value={heardName}
+                  onChange={(e) => setHeardName(e.target.value)}
+                  className="w-full bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {rosterPlayerWithDorsal && (
+              <div className="bg-slate-950/90 border border-slate-700 rounded-xl p-2.5 flex items-center gap-3">
+                <JerseyBadge
+                  number={rosterPlayerWithDorsal.jersey_number}
+                  size="sm"
+                  variant="kit"
+                  color={selectedTeamSide === 'home' ? 'blue' : 'orange'}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] text-slate-400">A la plantilla, el #{dorsalInput} és:</p>
+                  <p className="text-xs font-black text-white truncate">{rosterPlayerWithDorsal.full_name}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => pickRosterPlayer(rosterPlayerWithDorsal)}
+                  className="px-2.5 py-1.5 rounded-lg text-[11px] font-black bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600/30 shrink-0"
+                >
+                  Sí, és ell
+                </button>
+              </div>
+            )}
+
+            <p className="text-[11px] text-slate-500">
+              Es guarda només amb el dorsal. Quan la FFCV publique l'acta, s'assigna al jugador que el portava en
+              este partit (encara que a la plantilla tinga un altre número).
+            </p>
+          </div>
+        ) : selectedPlayer ? (
+          <div className="bg-slate-950/90 border border-emerald-500/40 rounded-xl p-2.5 flex items-center gap-3 shadow-sm">
+            <JerseyBadge
+              number={selectedPlayer.jersey_number}
+              size="sm"
+              variant="kit"
+              color={selectedTeamSide === 'home' ? 'blue' : 'orange'}
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-black text-white truncate">{selectedPlayer.full_name}</p>
+              <p className="text-[11px] text-slate-400 truncate">
+                {selectedPlayer.position || 'Demarcació sense definir'} ·{' '}
+                <span className="text-sky-300 font-semibold">{selectedPlayer.infantil_year || 'Infantil'}</span>
+                {' · '}
+                {selectedPlayer.status}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedPlayerId(null)}
+              className="text-[11px] font-bold text-slate-400 hover:text-white shrink-0"
+            >
+              Canviar
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 focus-within:border-sky-400">
+              <Search className="w-4 h-4 text-slate-500 shrink-0" />
+              <input
+                type="text"
+                placeholder={`Busca per nom o dorsal a ${activeTeamName}`}
+                value={playerSearch}
+                onChange={(e) => setPlayerSearch(e.target.value)}
+                className="w-full bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none"
+              />
+            </div>
+            <div className="max-h-48 overflow-y-auto custom-scrollbar space-y-1 pr-1">
+              {searchResults.length === 0 ? (
+                <p className="text-[11px] text-slate-500 p-2">
+                  Cap jugador de {activeTeamName} coincideix. Si no està a la plantilla, valora'l per dorsal.
+                </p>
+              ) : (
+                searchResults.map((p) => (
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => handleSelectDorsal(p.jersey_number!)}
-                    className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
-                      isSelected
-                        ? 'bg-sky-500 text-slate-950 font-black shadow-md scale-105'
-                        : 'bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800'
-                    }`}
+                    onClick={() => setSelectedPlayerId(p.id)}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left"
                   >
-                    <span>#{p.jersey_number}</span>
-                    <span className="text-[10px] opacity-75 truncate max-w-[80px]">
-                      {p.last_name || p.first_name}
+                    <span className="w-8 text-xs font-black text-sky-300 shrink-0">
+                      {p.jersey_number != null ? `#${p.jersey_number}` : '—'}
                     </span>
+                    <span className="text-xs font-bold text-white truncate flex-1">{p.full_name}</span>
+                    <span className="text-[10px] text-slate-500 shrink-0">{p.position}</span>
                   </button>
-                );
-              })}
+                ))
+              )}
             </div>
           </div>
         )}
@@ -585,18 +610,12 @@ export const QuickDorsalScouting: React.FC<QuickDorsalScoutingProps> = ({
             )}
           </div>
 
-          {micError && (
-            <p className="text-[11px] text-rose-400 font-semibold">{micError}</p>
-          )}
+          {micError && <p className="text-[11px] text-rose-400 font-semibold">{micError}</p>}
         </div>
 
         {/* Reproductor si hi ha àudio enregistrat */}
         {activeAudioSource && !isRecording && (
-          <AudioNotePlayer
-            src={activeAudioSource}
-            duration={recordingTime || 0}
-            onDelete={handleClearAudio}
-          />
+          <AudioNotePlayer src={activeAudioSource} duration={recordingTime || 0} onDelete={handleClearAudio} />
         )}
 
         {/* Caixa de Text del Comentari */}
@@ -619,15 +638,12 @@ export const QuickDorsalScouting: React.FC<QuickDorsalScoutingProps> = ({
 
       {/* ── PAS 4 & 5: SELECCIONAR INTERESSANT I VALORAR AMB ESTRELLES ───── */}
       <div className="pt-2 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-        {/* Seleccionar Interessant / Preseleccionat */}
         <div>
-          <label className="text-xs font-bold text-slate-300 block mb-1.5">
-            4. Estat de seguiment del jugador:
-          </label>
+          <label className="text-xs font-bold text-slate-300 block mb-1.5">4. Estat de seguiment del jugador:</label>
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={toggleInteressant}
+              onClick={() => toggleStatus('Interesante')}
               className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 border shadow-sm ${
                 status === 'Interesante'
                   ? 'bg-violet-600 text-white border-violet-400 shadow-violet-950/30'
@@ -635,12 +651,12 @@ export const QuickDorsalScouting: React.FC<QuickDorsalScoutingProps> = ({
               }`}
             >
               <Sparkles className="w-4 h-4" />
-              <span>Marcar Interessant</span>
+              <span>Interessant</span>
             </button>
 
             <button
               type="button"
-              onClick={togglePreseleccionat}
+              onClick={() => toggleStatus('Preseleccionado')}
               className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 border shadow-sm ${
                 status === 'Preseleccionado'
                   ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-amber-950/30'
@@ -651,9 +667,11 @@ export const QuickDorsalScouting: React.FC<QuickDorsalScoutingProps> = ({
               <span>Preseleccionat</span>
             </button>
           </div>
+          {!status && (
+            <p className="text-[10px] text-slate-500 mt-1">Sense marcar: no es canvia l'estat del jugador.</p>
+          )}
         </div>
 
-        {/* Estrelles a valorar */}
         <div>
           <label className="text-xs font-bold text-slate-300 block mb-1.5 flex items-center justify-between">
             <span>5. Estrelles a valorar:</span>
@@ -667,40 +685,87 @@ export const QuickDorsalScouting: React.FC<QuickDorsalScoutingProps> = ({
             </span>
           </label>
           <div className="bg-slate-950 p-2 rounded-xl border border-slate-800 flex items-center justify-between">
-            <StarRating
-              rating={rating}
-              onChange={setRating}
-              size="lg"
-              theme="dark"
-            />
+            <StarRating rating={rating} onChange={setRating} size="lg" theme="dark" />
             <span className="text-xs font-black text-slate-400">({rating} estrelles)</span>
           </div>
         </div>
       </div>
 
       {/* ── BOTÓ DESAR VALORACIÓ ─────────────────────────────────────────── */}
-      <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-3">
+      <div className="pt-2 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <p className="text-[11px] text-slate-400">
-          {dorsalInput ? (
+          {mode === 'dorsal' && dorsalInput ? (
             <span>
-              Desar valoració per a <strong className="text-white">#{dorsalInput}</strong> de{' '}
+              Desar valoració per al <strong className="text-white">#{dorsalInput}</strong> de{' '}
               <strong className="text-sky-300">{activeTeamName}</strong>
             </span>
+          ) : mode === 'player' && selectedPlayer ? (
+            <span>
+              Desar valoració a la fitxa de <strong className="text-white">{selectedPlayer.full_name}</strong>
+            </span>
           ) : (
-            <span>Indica un dorsal per a activar el guardat</span>
+            <span>{mode === 'dorsal' ? 'Indica un dorsal per a guardar' : 'Tria el jugador per a guardar'}</span>
           )}
         </p>
 
         <button
           type="button"
-          disabled={!dorsalInput.trim() || isRecording}
-          onClick={handleSaveObservation}
-          className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black transition-all flex items-center gap-2 shadow-lg shadow-emerald-950/40 cursor-pointer hover:scale-[1.02]"
+          disabled={!canSave}
+          onClick={handleSave}
+          className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/40 cursor-pointer hover:scale-[1.02]"
         >
           <CheckCircle2 className="w-4 h-4" />
-          <span>Guardar Valoració de Jugador</span>
+          <span>Guardar Valoració</span>
         </button>
       </div>
+
+      {/* ── VALORACIONS GUARDADES EN AQUEST PARTIT ───────────────────────── */}
+      {matchScouts.length > 0 && (
+        <div className="pt-3 border-t border-slate-800 space-y-2">
+          <h4 className="text-[11px] font-black text-slate-300 uppercase tracking-wider">
+            Valoracions d'aquest partit ({matchScouts.length})
+          </h4>
+          {matchScouts.map((s) => {
+            const state = scoutState(s);
+            const key = dorsalScoutKey(s);
+            const pending = s.identified_by !== 'player' && !s.reconciled;
+            return (
+              <div key={key} className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex items-start gap-2.5">
+                <span
+                  className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase shrink-0 ${
+                    s.side === 'home' ? 'bg-sky-500/20 text-sky-300' : 'bg-orange-500/20 text-orange-300'
+                  }`}
+                >
+                  {s.side === 'home' ? 'LOC' : 'VIS'}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-black text-white truncate">
+                    {s.dorsal != null && `#${s.dorsal} `}
+                    {s.identified_by === 'player' ? s.player_name : s.player_name && `(${s.player_name})`}
+                    <span className="text-amber-400 font-bold ml-1.5">{'★'.repeat(s.rating || 0)}</span>
+                    {s.status && <span className="text-[10px] text-violet-300 font-bold ml-1.5">{s.status}</span>}
+                  </p>
+                  {s.comment && <p className="text-[11px] text-slate-400 line-clamp-2">{s.comment}</p>}
+                  <p className={`text-[10px] font-bold flex items-center gap-1 mt-0.5 ${state.cls}`}>
+                    {state.icon}
+                    <span>{state.text}</span>
+                  </p>
+                </div>
+                {pending && (
+                  <button
+                    type="button"
+                    title="Esborrar valoració"
+                    onClick={() => removeDorsalScoutFromAgenda(agendaItem.id, key)}
+                    className="p-1 text-slate-500 hover:text-rose-400 shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

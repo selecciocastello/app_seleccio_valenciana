@@ -1,9 +1,9 @@
-name: Scraping Jugadors i Plantilles FFCV (Dimecres)
+name: Scraping Jugadors i Plantilles FFCV (Dilluns a Divendres)
 
 on:
   schedule:
-    # Se ejecuta todos los miércoles a las 05:00 UTC (07:00 hora peninsular española)
-    - cron: '0 5 * * 3'
+    # Se ejecuta de lunes a viernes a las 04:00 UTC (06:00 hora peninsular española)
+    - cron: '0 4 * * 1-5'
   workflow_dispatch: # Permite ejecutarlo manualmente desde GitHub con un clic
 
 # Permisos para que github-actions[bot] pueda hacer commit y push de los datos
@@ -33,11 +33,11 @@ jobs:
       - name: 🌐 Instalar navegador Chromium (Playwright)
         run: npx playwright install --with-deps chromium
 
-      - name: 👥 Ejecutar Scraping FFCV (Plantillas, Jugadores e Historial)
+      - name: 👥 Ejecutar Scraping FFCV (Plantillas por rotación diaria)
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: node scripts/scrape_ffcv_infantil.cjs --players-only
+        run: node scripts/scrape_ffcv_infantil.cjs --players-only --rotation --teams-per-run 25
 
       - name: 💾 Guardar datos JSON y fotos en el repositorio (Commit & Push)
         # always(): las fotos y los JSON se suben aunque el scraping falle o se agote el tiempo,
@@ -46,7 +46,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add src/data/scraped_teams.json src/data/scraped_players.json public/players || true
+          git add src/data/scraped_teams.json src/data/scraped_players.json src/data/scrape_rotation.json public/players || true
           if git diff --staged --quiet; then
             echo "No hay cambios nuevos en los datos locales."
             exit 0

@@ -29,7 +29,7 @@
  *    existen solo se pide la ficha (equipo, dorsal, foto, estadísticas) y en Supabase
  *    solo se escriben los que han cambiado. Los que ya no están en ninguna plantilla se borran.
  *    Para no saturar a la FFCV, la ficha de un jugador ya conocido que sigue en el mismo
- *    equipo se pide cada PLAYER_REFRESH_WEEKS semanas (por turnos: cada semana toca a una
+ *    equipo y ya tiene foto se pide cada PLAYER_REFRESH_WEEKS semanas (por turnos: cada semana toca a una
  *    parte de los jugadores); el resto de semanas se reutiliza lo que hay en scraped_players.json.
  *  - Todo lo que falla (grupo, jornada, equipo o jugador) se apunta y se reintenta al
  *    final de la descarga.
@@ -1332,7 +1332,7 @@ function readJsonArray(filePath) {
 
       /**
        * Registro anterior reutilizable sin pedir nada a la FFCV: jugador ya conocido, en el
-       * mismo equipo, descargado hace menos de PLAYER_REFRESH_WEEKS semanas y al que no le
+       * mismo equipo, con foto, descargado hace menos de PLAYER_REFRESH_WEEKS semanas y al que no le
        * toca turno esta semana (el turno sale del código del jugador, así cada semana se
        * refresca una parte distinta de la plantilla).
        */
@@ -1341,6 +1341,8 @@ function readJsonArray(filePath) {
         const prev = previousRecords.get(id);
         if (!prev || prev.team_id !== `ffcv-team-${codEquipo}` || !prev.scraped_at) return null;
         if (!Array.isArray(prev.history) || prev.history.length === 0) return null;
+        // Sin foto: se pide cada semana por si el club ya la ha subido a la FFCV
+        if (!prev.photo_url) return null;
         const age = Date.now() - new Date(prev.scraped_at).getTime();
         if (!(age >= 0 && age < PLAYER_REFRESH_WEEKS * WEEK_MS - 12 * 60 * 60 * 1000)) return null;
         const week = Math.floor(Date.now() / WEEK_MS);

@@ -12,6 +12,7 @@ import {
 import { Link } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
+import { PlayerPhoto } from '../../components/ui/PlayerPhoto';
 import { useAppStore } from '../../hooks/useAppStore';
 import { formatAppDate } from '../../utils/dateFormatter';
 
@@ -128,20 +129,36 @@ export const Dashboard: React.FC = () => {
                   </div>
 
                   {/* Player Card pill internal like FFCV */}
-                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-[#002568] text-white flex items-center justify-center font-black text-sm uppercase shadow">
-                        {player.first_name[0]}
-                        {player.last_name[0]}
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-black text-slate-900 uppercase">{player.full_name}</h4>
-                        <p className="text-[11px] text-[#ff6600] font-bold">Estat: {player.status}</p>
+                  <div className="flex items-center justify-between p-3.5 sm:p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:border-slate-200 transition-colors">
+                    <div className="flex items-center gap-4 min-w-0 flex-1">
+                      <Link
+                        to={`/jugadores/${player.id}`}
+                        className="relative shrink-0 flex items-end justify-center group"
+                        title={player.full_name}
+                      >
+                        <PlayerPhoto
+                          src={player.photo_url}
+                          alt={player.full_name}
+                          firstName={player.first_name}
+                          lastName={player.last_name}
+                          preferSilhouette={true}
+                          imgClassName="w-24 h-28 sm:w-28 sm:h-32 object-contain object-bottom drop-shadow-[0_4px_10px_rgba(0,0,0,0.22)] group-hover:scale-105 transition-transform"
+                          fallbackClassName="w-16 h-20 rounded-2xl bg-[#002568] text-white flex items-center justify-center font-black text-xl uppercase shadow-sm"
+                        />
+                      </Link>
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <Link
+                          to={`/jugadores/${player.id}`}
+                          className="text-sm sm:text-base font-black text-[#061338] uppercase hover:text-[#ff6600] transition-colors line-clamp-2 leading-snug"
+                        >
+                          {player.full_name}
+                        </Link>
+                        <p className="text-xs text-[#ff6600] font-bold">Estat: {player.status}</p>
                       </div>
                     </div>
                     <Link
                       to={`/jugadores/${player.id}`}
-                      className="px-3 py-1.5 bg-[#061338] hover:bg-[#002568] text-white font-bold text-[11px] rounded-full transition-colors"
+                      className="shrink-0 px-4 py-2 bg-[#061338] hover:bg-[#002568] text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-sm ml-3 self-center"
                     >
                       Perfil
                     </Link>

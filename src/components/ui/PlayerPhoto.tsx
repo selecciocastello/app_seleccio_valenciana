@@ -7,11 +7,12 @@ interface PlayerPhotoProps {
   lastName?: string;
   imgClassName: string;
   fallbackClassName: string;
+  preferSilhouette?: boolean;
 }
 
 /**
- * Foto del jugador con las iniciales como alternativa, tanto si no hay foto como
- * si la imagen no carga (p. ej. una foto nueva que aún no está desplegada).
+ * Foto del jugador con soporte para silueta transparente (.png sin fondo)
+ * y con las iniciales como alternativa elegante si no hay foto o si falla.
  */
 export const PlayerPhoto: React.FC<PlayerPhotoProps> = ({
   src,
@@ -19,15 +20,38 @@ export const PlayerPhoto: React.FC<PlayerPhotoProps> = ({
   firstName,
   lastName,
   imgClassName,
-  fallbackClassName
+  fallbackClassName,
+  preferSilhouette = false
 }) => {
+  const getInitialSrc = () => {
+    if (!src) return null;
+    if (preferSilhouette && /\.(jpe?g)$/i.test(src)) {
+      return src.replace(/\.(jpe?g)$/i, '.png');
+    }
+    return src;
+  };
+
+  const [currentSrc, setCurrentSrc] = useState<string | null>(getInitialSrc);
+  const [triedFallback, setTriedFallback] = useState(false);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
+    setCurrentSrc(getInitialSrc());
+    setTriedFallback(false);
     setFailed(false);
-  }, [src]);
+  }, [src, preferSilhouette]);
 
-  if (!src || failed) {
+  const handleError = () => {
+    if (preferSilhouette && !triedFallback && src && currentSrc !== src) {
+      // Fallback de silueta .png a imagen .jpg original
+      setTriedFallback(true);
+      setCurrentSrc(src);
+    } else {
+      setFailed(true);
+    }
+  };
+
+  if (!currentSrc || failed) {
     return (
       <div className={fallbackClassName}>
         {firstName?.[0] || 'J'}
@@ -36,5 +60,13 @@ export const PlayerPhoto: React.FC<PlayerPhotoProps> = ({
     );
   }
 
-  return <img src={src} alt={alt} className={imgClassName} onError={() => setFailed(true)} />;
+  return (
+    <img
+      src={currentSrc}
+      alt={alt}
+      className={imgClassName}
+      onError={handleError}
+      loading="lazy"
+    />
+  );
 };

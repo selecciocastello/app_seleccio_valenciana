@@ -37,7 +37,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: node scripts/scrape_ffcv_infantil.cjs --players-only --rotation --teams-per-run 25
+        run: node scripts/scrape_ffcv_players.cjs --rotation --teams-per-run 25
 
       - name: 💾 Guardar datos JSON y fotos en el repositorio (Commit & Push)
         # always(): las fotos y los JSON se suben aunque el scraping falle o se agote el tiempo,

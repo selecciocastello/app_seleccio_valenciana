@@ -8,9 +8,9 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "scrape:infantil": "node scripts/scrape_ffcv_infantil.cjs",
-    "scrape:infantil:matches": "node scripts/scrape_ffcv_infantil.cjs --matches-only",
-    "scrape:infantil:players": "node scripts/scrape_ffcv_infantil.cjs --players-only --rotation --teams-per-run 25"
+    "scrape:matches": "node scripts/scrape_ffcv_matches.cjs",
+    "scrape:players": "node scripts/scrape_ffcv_players.cjs --rotation --teams-per-run 25",
+    "scrape:all": "npm run scrape:matches && node scripts/scrape_ffcv_players.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

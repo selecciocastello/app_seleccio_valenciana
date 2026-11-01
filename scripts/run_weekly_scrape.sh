@@ -12,7 +12,8 @@ cd "$PROJECT_DIR" || exit 1
 # Usar Node del sistema
 NODE_BIN="$(which node 2>/dev/null || echo "/usr/local/bin/node")"
 
-"$NODE_BIN" scripts/scrape_ffcv_infantil.cjs >> "$LOG_FILE" 2>&1
+"$NODE_BIN" scripts/scrape_ffcv_matches.cjs >> "$LOG_FILE" 2>&1
+"$NODE_BIN" scripts/scrape_ffcv_players.cjs >> "$LOG_FILE" 2>&1
 
 echo "🏁 Finalizado Scraping: $(date)" >> "$LOG_FILE"
 echo "" >> "$LOG_FILE"

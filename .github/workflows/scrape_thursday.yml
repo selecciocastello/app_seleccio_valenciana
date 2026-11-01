@@ -37,7 +37,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: node scripts/scrape_ffcv_infantil.cjs --matches-only
+        run: node scripts/scrape_ffcv_matches.cjs
 
       - name: 💾 Guardar datos JSON en el repositorio (Commit & Push)
         # always(): los JSON se suben aunque el scraping falle o se agote el tiempo

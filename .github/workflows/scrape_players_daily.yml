@@ -1,9 +1,9 @@
-name: Scraping Jugadors i Plantilles FFCV (Dilluns a Divendres)
+name: Scraping Jugadors i Plantilles FFCV (1 equip cada 2 dies)
 
 on:
   schedule:
-    # Se ejecuta de lunes a viernes a las 04:00 UTC (06:00 hora peninsular española)
-    - cron: '0 4 * * 1-5'
+    # Cada 2 días (días impares del mes) a las 04:00 UTC: 1 equipo de la rueda por ejecución
+    - cron: '0 4 */2 * *'
   workflow_dispatch: # Permite ejecutarlo manualmente desde GitHub con un clic
 
 # Permisos para que github-actions[bot] pueda hacer commit y push de los datos
@@ -33,11 +33,11 @@ jobs:
       - name: 🌐 Instalar navegador Chromium (Playwright)
         run: npx playwright install --with-deps chromium
 
-      - name: 👥 Ejecutar Scraping FFCV (Plantillas por rotación diaria)
+      - name: 👥 Ejecutar Scraping FFCV (1 equipo de la rueda)
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: node scripts/scrape_ffcv_players.cjs --rotation --teams-per-run 25
+        run: node scripts/scrape_ffcv_players.cjs --rotation --teams-per-run 1
 
       - name: 💾 Guardar datos JSON y fotos en el repositorio (Commit & Push)
         # always(): las fotos y los JSON se suben aunque el scraping falle o se agote el tiempo,

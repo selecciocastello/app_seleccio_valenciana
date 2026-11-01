@@ -9,7 +9,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "scrape:matches": "node scripts/scrape_ffcv_matches.cjs",
-    "scrape:players": "node scripts/scrape_ffcv_players.cjs --rotation --teams-per-run 25",
+    "scrape:players": "node scripts/scrape_ffcv_players.cjs --rotation --teams-per-run 1",
     "scrape:all": "npm run scrape:matches && node scripts/scrape_ffcv_players.cjs"
   },
   "dependencies": {

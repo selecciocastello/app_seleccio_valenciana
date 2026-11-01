@@ -15,6 +15,7 @@
  *   --rotation            Plantillas por turnos: en cada ejecución solo se procesan los siguientes
  *                         equipos de la rueda (ver "Rotación de equipos" más abajo)
  *   --teams-per-run <n>   Equipos por ejecución en modo --rotation (por defecto 25)
+ *   --team <código>       Descargar solo ese equipo (código FFCV), sin mover la rueda
  *
  * Descarga incremental:
  *  - Jugadores: los nuevos se descargan completos (ficha + historial); de los que ya
@@ -42,7 +43,7 @@ const { toPhotoUrl } = require('./player_photos.cjs');
 const { closeFfcv } = require('./ffcv_client.cjs');
 const {
   DATA_DIR, TARGET_TEMPORADA, TARGET_SEASON_START_YEAR, TARGET_COMPETITIONS, RETRY_ROUNDS, RETRY_PAUSE_MS,
-  sleep, ffcvFetch, mapWithConcurrency, defer, runDeferred, todayInSpain, stableStringify,
+  sleep, ffcvFetch, mapWithConcurrency, defer, runDeferred, todayInSpain, datePlusDays, stableStringify,
   formatLogoUrl, parseDate, ensureDir, selectAll, getSupabase, readJsonArray, readJsonObject
 } = require('./ffcv_common.cjs');
 
@@ -53,10 +54,15 @@ const limitTeams = limitTeamsIdx !== -1 ? parseInt(args[limitTeamsIdx + 1], 10) 
 const limitPlayersIdx = args.indexOf('--limit-players');
 const limitPlayers = limitPlayersIdx !== -1 ? parseInt(args[limitPlayersIdx + 1], 10) : Infinity;
 const refreshAllPlayers = args.includes('--all-players');
-const rotation = args.includes('--rotation');
+const teamIdx = args.indexOf('--team');
+const ONLY_TEAM = teamIdx !== -1 ? String(args[teamIdx + 1] || '').trim() : null;
+// --team usa la rueda (conserva los datos del resto de equipos) pero sin moverla
+const rotation = args.includes('--rotation') || Boolean(ONLY_TEAM);
 const teamsPerRunIdx = args.indexOf('--teams-per-run');
 const TEAMS_PER_RUN = teamsPerRunIdx !== -1 ? Math.max(1, parseInt(args[teamsPerRunIdx + 1], 10) || 25) : 25;
 const ROTATION_FILE = 'scrape_rotation.json';
+// Días que espera un equipo con jugadores sin dorsal antes de volver a tener prioridad
+const DORSAL_RETRY_DAYS = 14;
 
 // Cada cuántas semanas se vuelve a pedir la ficha de un jugador ya conocido
 const PLAYER_REFRESH_WEEKS = 2;
@@ -870,8 +876,8 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
       const prev = previousRecords.get(id);
       if (!prev || prev.team_id !== `ffcv-team-${codEquipo}` || !prev.scraped_at) return null;
       if (!Array.isArray(prev.history) || prev.history.length === 0) return null;
-      // Sin foto: se pide cada semana por si el club ya la ha subido a la FFCV
-      if (!prev.photo_url) return null;
+      // Sin foto o sin dorsal: se pide siempre por si el club ya los ha subido a la FFCV
+      if (!prev.photo_url || !prev.dorsal) return null;
       const age = Date.now() - new Date(prev.scraped_at).getTime();
       if (!(age >= 0 && age < PLAYER_REFRESH_WEEKS * WEEK_MS - 12 * 60 * 60 * 1000)) return null;
       const week = Math.floor(Date.now() / WEEK_MS);
@@ -1074,19 +1080,47 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
         if (p.ffcv_player_id && teamIds.has(p.team_id)) playersById.set(String(p.ffcv_player_id), p);
       }
 
-      // 3. Tanda de hoy: pendientes primero y después los siguientes de la rueda
+      // 3. Tanda de hoy: pendientes primero, después equipos con jugadores sin dorsal y
+      //    por último los siguientes de la rueda
       const start = byCod.has(String(state.next_cod))
         ? allTeams.findIndex((t) => t.cod === String(state.next_cod))
         : (Number.isInteger(state.cursor) && state.cursor >= 0 ? state.cursor % total : 0);
       const pending = [...new Set((state.pending || []).map(String))].filter((c) => byCod.has(c));
-      const batch = pending.slice(0, TEAMS_PER_RUN).map((c) => byCod.get(c));
-      const carried = pending.slice(batch.length);
+      if (ONLY_TEAM && !byCod.has(ONLY_TEAM)) throw new Error(`El equipo ${ONLY_TEAM} no está en las competiciones.`);
+      const batch = ONLY_TEAM ? [byCod.get(ONLY_TEAM)] : pending.slice(0, TEAMS_PER_RUN).map((c) => byCod.get(c));
+      const carried = ONLY_TEAM ? pending : pending.slice(batch.length);
       const inBatch = new Set(batch.map((t) => t.cod));
-      const fromPending = batch.length;
+      const fromPending = ONLY_TEAM ? 0 : batch.length;
+
+      // Equipos con jugadores sin dorsal: primero los que más tienen y, a igualdad, los revisados
+      // hace más tiempo. Un equipo revisado hace menos de DORSAL_RETRY_DAYS días espera su turno,
+      // para que los clubes que aún no han puesto dorsales no acaparen todas las ejecuciones.
+      const lastScraped = state.last_scraped && typeof state.last_scraped === 'object' ? { ...state.last_scraped } : {};
+      const retryBefore = datePlusDays(today, -DORSAL_RETRY_DAYS);
+      const missingDorsal = new Map();
+      for (const p of playersById.values()) {
+        if (p.dorsal) continue;
+        const cod = String(p.team_id || '').replace('ffcv-team-', '');
+        missingDorsal.set(cod, (missingDorsal.get(cod) || 0) + 1);
+      }
+      const dorsalPriority = [...missingDorsal.keys()]
+        .filter((cod) => byCod.has(cod) && !inBatch.has(cod) && !(lastScraped[cod] > retryBefore))
+        .sort((a, b) => missingDorsal.get(b) - missingDorsal.get(a) || String(lastScraped[a] || '').localeCompare(String(lastScraped[b] || '')));
+      for (const cod of dorsalPriority) {
+        if (ONLY_TEAM || batch.length >= TEAMS_PER_RUN) break;
+        batch.push(byCod.get(cod));
+        inBatch.add(cod);
+      }
+      const fromDorsal = batch.length - fromPending;
+      if (missingDorsal.size > 0) {
+        console.log(`   🔢 ${[...missingDorsal.values()].reduce((a, b) => a + b, 0)} jugadores sin dorsal en ${missingDorsal.size} equipos` +
+          ` (${dorsalPriority.length} listos para revisar; el resto se revisó hace menos de ${DORSAL_RETRY_DAYS} días).`);
+      }
+
       let idx = start;
       let advanced = 0;
       let wrapped = false;
-      while (batch.length < TEAMS_PER_RUN && advanced < total) {
+      while (!ONLY_TEAM && batch.length < TEAMS_PER_RUN && advanced < total) {
         const t = allTeams[idx];
         if (!inBatch.has(t.cod)) {
           batch.push(t);
@@ -1100,7 +1134,8 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
       const end = start + advanced;
       const range = advanced === 0 ? 'ninguno' : end > total ? `${start + 1}-${total} y 1-${end - total}` : `${start + 1}-${end}`;
       console.log(`   ${total} equipos en total. Ciclo ${cycle}: equipos ${range} de la rueda` +
-        `${fromPending ? ` + ${fromPending} pendiente(s) del día anterior` : ''}${carried.length ? ` (${carried.length} pendientes quedan para mañana)` : ''}.`);
+        `${fromPending ? ` + ${fromPending} pendiente(s) del día anterior` : ''}` +
+        `${fromDorsal ? ` + ${fromDorsal} con jugadores sin dorsal` : ''}${carried.length ? ` (${carried.length} pendientes quedan para mañana)` : ''}.`);
       if (wrapped) console.log('   🏁 Esta tanda cierra el ciclo: al terminar se revisan los jugadores antiguos.');
 
       // Solo al cerrar un ciclo completo, con la lista entera y sin pendientes, se revisan antiguos
@@ -1126,6 +1161,8 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
       saveRotationState = () => {
         for (const cod of teamsWithFailedPlayers) if (inBatch.has(cod)) failedTeams.add(cod);
         const nextPending = [...new Set([...carried, ...failedTeams])];
+        for (const t of batch) if (!failedTeams.has(t.cod)) lastScraped[t.cod] = today;
+        for (const cod of Object.keys(lastScraped)) if (!byCod.has(cod)) delete lastScraped[cod];
         const nextState = {
           next_cod: allTeams[idx].cod,
           cursor: idx,
@@ -1140,6 +1177,7 @@ async function scrapePlayer({ codJugador, nombreJugador, codEquipo, nombreEquipo
             failed: [...failedTeams],
             closed_cycle: wrapped
           },
+          last_scraped: lastScraped,
           teams: allTeams
         };
         fs.writeFileSync(rotationPath, JSON.stringify(nextState, null, 2), 'utf8');
